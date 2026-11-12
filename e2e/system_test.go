@@ -11,6 +11,38 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var _ = Describe("endpoint names", Label("e2e"), func() {
+	It("answers a long unknown endpoint as an authenticated error 0", func() {
+		u := app.subsonicUser("longname")
+		for _, name := range []string{
+			"createPodcastChannel", "deletePodcastChannel", "getTranscodeDecision",
+		} {
+			raw := u.get(name, nil)
+			Expect(raw.Status).To(Equal(http.StatusOK), name)
+			resp := raw.json()
+			Expect(resp["status"]).To(Equal("failed"), name)
+			Expect(errorCode(obj(resp, "error"))).To(Equal(0), name)
+		}
+	})
+
+	It("refuses a locked Streamline account with error 40", func() {
+		u := app.subsonicUser("locked")
+		u.call("ping", nil)
+		_, err := app.core.Exec(
+			"UPDATE users SET locked_until = ? WHERE id = ?",
+			"2099-01-01 00:00:00+00:00", u.ID,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_, err := app.core.Exec(
+				"UPDATE users SET locked_until = NULL WHERE id = ?", u.ID,
+			)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		wantCode(u.get("ping", nil), 40)
+	})
+})
+
 var _ = Describe("the extension", Label("e2e"), func() {
 	It("runs with exactly what its manifest asks for", func() {
 		ext := app.extension()

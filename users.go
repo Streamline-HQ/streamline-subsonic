@@ -88,7 +88,7 @@ func getUsers(c *reqCtx) sdk.Response {
 		return c.failErr(envelope.NotAuthorized())
 	}
 	rows, err := query(
-		`SELECT l.user_id, l.email, u.role, u.display_name, ` + accountColumns + `
+		`SELECT l.user_id, l.email, u.role, u.display_name, ` + accountColumns + `, u.locked
 		FROM streamline_user_logins l
 		JOIN streamline_users u ON u.id = l.user_id
 		LEFT JOIN accounts a ON a.user_id = l.user_id

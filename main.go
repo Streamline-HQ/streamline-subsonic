@@ -6,6 +6,7 @@ package main
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -80,7 +81,7 @@ func route(r sdk.Request) sdk.Response {
 	if r.Path == "/cards" || strings.HasPrefix(r.Path, "/cards/") {
 		return cards(r)
 	}
-	if name, ok := restEndpoint(r.Path); ok {
+	if name, ok := restEndpoint(r); ok {
 		return serveREST(r, name)
 	}
 	if shareHandler == nil {
@@ -96,9 +97,10 @@ var shareTokenShape = regexp.MustCompile(`^[A-Za-z0-9_-]{20,}$`)
 // restEndpoint tells a /rest path from a /share path. The host hands a guest
 // the path relative to the mount and does not say which mount it was, so
 // /rest/ping and /share/<token> arrive as /ping and /<token>: a single
-// segment is /rest unless it is no endpoint of ours and looks like a token.
-func restEndpoint(path string) (name string, ok bool) {
-	seg := strings.TrimPrefix(path, "/")
+// segment is /rest unless it is no endpoint of ours, looks like a token and
+// carries no u parameter, which every /rest call has.
+func restEndpoint(r sdk.Request) (name string, ok bool) {
+	seg := strings.TrimPrefix(r.Path, "/")
 	if strings.Contains(seg, "/") {
 		return "", false
 	}
@@ -106,7 +108,12 @@ func restEndpoint(path string) (name string, ok bool) {
 	if _, known := endpoints[seg]; known || name == openSubsonicExtensions {
 		return name, true
 	}
-	return name, !shareTokenShape.MatchString(seg)
+	if !shareTokenShape.MatchString(seg) {
+		return name, true
+	}
+	// A client always sends u; a share visitor never does.
+	q, err := url.ParseQuery(r.Query)
+	return name, err != nil || q.Has("u")
 }
 
 func serveREST(r sdk.Request, name string) sdk.Response {

@@ -38,6 +38,8 @@ type account struct {
 	CanChangePassword  bool
 	// MaxBitRate is the kbps ceiling on every stream; 0 is none.
 	MaxBitRate uint16
+	// Locked is Streamline's lockout after failed sign-ins.
+	Locked bool
 }
 
 func (a *account) allowed(p permission) bool {
@@ -69,8 +71,8 @@ const accountColumns = `COALESCE(a.can_stream, 1), COALESCE(a.can_download, 1),
 	COALESCE(a.can_rate, 1), COALESCE(a.can_change_password, 1),
 	COALESCE(a.max_bit_rate, 0)`
 
-// scanAccount reads l.user_id, l.email, u.role, u.display_name then
-// accountColumns.
+// scanAccount reads l.user_id, l.email, u.role, u.display_name, then
+// accountColumns, then u.locked.
 func scanAccount(r row) *account {
 	return &account{
 		ID:                 r.uint(0),
@@ -84,6 +86,7 @@ func scanAccount(r row) *account {
 		CanRate:            r.bool(8),
 		CanChangePassword:  r.bool(9),
 		MaxBitRate:         uint16(min(max(r.int(10), 0), maxBitRateCeiling)),
+		Locked:             r.bool(11),
 	}
 }
 
@@ -91,7 +94,7 @@ func scanAccount(r row) *account {
 // found is false for an id Streamline does not have.
 func loadAccount(userID uint32) (acc *account, found bool, err error) {
 	r, found, err := queryRow(
-		`SELECT l.user_id, l.email, u.role, u.display_name, `+accountColumns+`
+		`SELECT l.user_id, l.email, u.role, u.display_name, `+accountColumns+`, u.locked
 		FROM streamline_user_logins l
 		JOIN streamline_users u ON u.id = l.user_id
 		LEFT JOIN accounts a ON a.user_id = l.user_id
@@ -108,7 +111,7 @@ func loadAccount(userID uint32) (acc *account, found bool, err error) {
 // carries; the user name is the email, matched without regard to case.
 func loadAccountByEmail(email string) (acc *account, found bool, err error) {
 	r, found, err := queryRow(
-		`SELECT l.user_id, l.email, u.role, u.display_name, `+accountColumns+`
+		`SELECT l.user_id, l.email, u.role, u.display_name, `+accountColumns+`, u.locked
 		FROM streamline_user_logins l
 		JOIN streamline_users u ON u.id = l.user_id
 		LEFT JOIN accounts a ON a.user_id = l.user_id
@@ -134,7 +137,7 @@ func (c *reqCtx) authenticate() error {
 	if err != nil {
 		return err
 	}
-	if !found {
+	if !found || acc.Locked {
 		return envelope.WrongCredentials()
 	}
 	stored, err := storedPassword(acc.ID)
