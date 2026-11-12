@@ -1,0 +1,67 @@
+version: "3"
+
+vars:
+  WASM: subsonic.wasm
+  E2E_TIMEOUT: 5m
+
+tasks:
+  default:
+    cmds:
+      - task: build
+
+  build:
+    desc: Build subsonic.wasm
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+      - exclude: e2e/**
+      - exclude: internal/**
+    generates:
+      - "{{.WASM}}"
+    env:
+      GOOS: wasip1
+      GOARCH: wasm
+    cmds:
+      - go build -trimpath -buildmode=c-shared -o {{.WASM}} .
+
+  lint:
+    desc: Lint the guest (as wasip1) and the e2e module
+    cmds:
+      # go tool would build the linter itself for wasip1; resolve the host
+      # binary first and aim only its package loading at the guest's target.
+      - |
+        linter=$(go tool -n golangci-lint)
+        GOWORK=off GOOS=wasip1 GOARCH=wasm "$linter" run ./...
+      - cd e2e && go tool golangci-lint run ./...
+
+  fmt:
+    desc: Format Go sources
+    cmds:
+      - GOWORK=off go tool golangci-lint fmt ./...
+      - cd e2e && go tool golangci-lint fmt ./...
+
+  test:unit:
+    desc: Run the host-free specs natively
+    cmds:
+      - >-
+        go tool ginkgo run -r --keep-going --label-filter=unit
+        --skip-package=e2e,internal {{.CLI_ARGS}}
+
+  test:e2e:
+    desc: Run the end-to-end suite against STREAMLINE_BIN
+    deps: [build]
+    preconditions:
+      - sh: test -n "$STREAMLINE_BIN"
+        msg: STREAMLINE_BIN must name a built streamline binary
+    env:
+      SUBSONIC_WASM: "{{.ROOT_DIR}}/{{.WASM}}"
+    dir: e2e
+    cmds:
+      - go tool ginkgo run --keep-going --timeout={{.E2E_TIMEOUT}} {{.CLI_ARGS}}
+
+  test:
+    desc: Run every spec
+    cmds:
+      - task: test:unit
+      - task: test:e2e

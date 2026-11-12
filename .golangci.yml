@@ -1,0 +1,63 @@
+version: "2"
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0
+
+formatters:
+  enable:
+    - gofumpt
+    - golines
+
+  exclusions:
+    generated: lax
+
+  settings:
+    golines:
+      max-len: 85
+
+linters:
+  default: standard
+
+  enable:
+    - unparam
+    - unconvert
+    - modernize
+    - prealloc
+    - ginkgolinter
+    - errorlint
+    - bodyclose
+    - gosec
+    - nolintlint
+
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    unparam:
+      check-exported: true
+
+  exclusions:
+    generated: lax
+    rules:
+      # The foundation declares the helpers, the response types and every table
+      # the domain files use; until those files land, the root package holds
+      # code nothing calls yet. The integration step deletes this rule and
+      # whatever it then reports.
+      - linters:
+          - unused
+          - unparam
+        path: ^[a-z]+\.go$
+      - linters:
+          - gosec
+        path: (_test\.go$|^e2e/)
+        text: "G(101|104|115|124|202|204|702|301|302|304|306|404)"
+      # The harness helpers are what the domain specs call; the ones no spec
+      # of the foundation needs still belong to the contract. The integration
+      # step deletes this rule and whatever it then reports.
+      - linters:
+          - unused
+        path: ^e2e/harness_[a-z]+_test\.go$
+      - linters:
+          - errcheck
+        source: .*\.Close\(\)

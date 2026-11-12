@@ -1,4 +1,56 @@
-package subsonic
+package main
+
+import "github.com/streamline-hq/streamline-subsonic/envelope"
+
+// body is the payload a handler sets, at most one field non-nil, serialized
+// inside <subsonic-response> / "subsonic-response".
+type body struct {
+	License                *license                `xml:"license,omitempty"                json:"license,omitempty"`
+	MusicFolders           *musicFolders           `xml:"musicFolders,omitempty"           json:"musicFolders,omitempty"`
+	Artists                *indexes                `xml:"artists,omitempty"                json:"artists,omitempty"`
+	Indexes                *folderIndexes          `xml:"indexes,omitempty"                json:"indexes,omitempty"`
+	Directory              *directory              `xml:"directory,omitempty"              json:"directory,omitempty"`
+	Genres                 *genres                 `xml:"genres,omitempty"                 json:"genres,omitempty"`
+	Artist                 *artistWith             `xml:"artist,omitempty"                 json:"artist,omitempty"`
+	Album                  *albumWith              `xml:"album,omitempty"                  json:"album,omitempty"`
+	Song                   *child                  `xml:"song,omitempty"                   json:"song,omitempty"`
+	ArtistInfo             *artistInfo             `xml:"artistInfo,omitempty"             json:"artistInfo,omitempty"`
+	ArtistInfo2            *artistInfo2            `xml:"artistInfo2,omitempty"            json:"artistInfo2,omitempty"`
+	AlbumInfo              *albumInfo              `xml:"albumInfo,omitempty"              json:"albumInfo,omitempty"`
+	SimilarSongs           *songs                  `xml:"similarSongs,omitempty"           json:"similarSongs,omitempty"`
+	SimilarSongs2          *songs                  `xml:"similarSongs2,omitempty"          json:"similarSongs2,omitempty"`
+	TopSongs               *songs                  `xml:"topSongs,omitempty"               json:"topSongs,omitempty"`
+	AlbumList              *albumList              `xml:"albumList,omitempty"              json:"albumList,omitempty"`
+	AlbumList2             *albumList2             `xml:"albumList2,omitempty"             json:"albumList2,omitempty"`
+	RandomSongs            *songs                  `xml:"randomSongs,omitempty"            json:"randomSongs,omitempty"`
+	SongsByGenre           *songs                  `xml:"songsByGenre,omitempty"           json:"songsByGenre,omitempty"`
+	NowPlaying             *nowPlayingList         `xml:"nowPlaying,omitempty"             json:"nowPlaying,omitempty"`
+	Starred                *starred                `xml:"starred,omitempty"                json:"starred,omitempty"`
+	Starred2               *starred2               `xml:"starred2,omitempty"               json:"starred2,omitempty"`
+	SearchResult           *searchResult           `xml:"searchResult,omitempty"           json:"searchResult,omitempty"`
+	SearchResult2          *searchResult2          `xml:"searchResult2,omitempty"          json:"searchResult2,omitempty"`
+	SearchResult3          *search3                `xml:"searchResult3,omitempty"          json:"searchResult3,omitempty"`
+	Playlists              *playlists              `xml:"playlists,omitempty"              json:"playlists,omitempty"`
+	Playlist               *playlistWith           `xml:"playlist,omitempty"               json:"playlist,omitempty"`
+	Shares                 *shares                 `xml:"shares,omitempty"                 json:"shares,omitempty"`
+	Bookmarks              *bookmarks              `xml:"bookmarks,omitempty"              json:"bookmarks,omitempty"`
+	PlayQueue              *playQueue              `xml:"playQueue,omitempty"              json:"playQueue,omitempty"`
+	PlayQueueByIndex       *playQueueByIndex       `xml:"playQueueByIndex,omitempty"       json:"playQueueByIndex,omitempty"`
+	InternetRadioStations  *radioStations          `xml:"internetRadioStations,omitempty"  json:"internetRadioStations,omitempty"`
+	ScanStatus             *scanStatus             `xml:"scanStatus,omitempty"             json:"scanStatus,omitempty"`
+	User                   *subsonicUser           `xml:"user,omitempty"                   json:"user,omitempty"`
+	Users                  *subsonicUsers          `xml:"users,omitempty"                  json:"users,omitempty"`
+	Lyrics                 *lyrics                 `xml:"lyrics,omitempty"                 json:"lyrics,omitempty"`
+	LyricsList             *lyricsList             `xml:"lyricsList,omitempty"             json:"lyricsList,omitempty"`
+	OpenSubsonicExtensions []openSubsonicExtension `xml:"openSubsonicExtensions,omitempty" json:"openSubsonicExtensions,omitempty"`
+	Error                  *envelope.Error         `xml:"error,omitempty"                  json:"error,omitempty"`
+}
+
+// response is the whole document: the envelope's header and one body.
+type response struct {
+	envelope.Head
+	body
+}
 
 // child is a song, or an album when IsDir is set (folder-style responses).
 type child struct {
