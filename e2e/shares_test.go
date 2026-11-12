@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -77,6 +78,17 @@ var _ = Describe("shares", Label("e2e"), func() {
 			)
 			Expect(err).NotTo(HaveOccurred())
 		}
+		DeferCleanup(func() {
+			db := app.ext()
+			defer db.Close()
+			_, err := db.Exec(
+				"DELETE FROM playlist_tracks WHERE playlist_id = ?",
+				id,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = db.Exec("DELETE FROM playlists WHERE id = ?", id)
+			Expect(err).NotTo(HaveOccurred())
+		})
 		return "pl-" + itoa(uint32(id))
 	}
 
@@ -129,6 +141,55 @@ var _ = Describe("shares", Label("e2e"), func() {
 		Expect(got).To(HaveLen(1))
 		Expect(got[0]["visitCount"]).To(BeEquivalentTo(1))
 		Expect(got[0]["lastVisited"]).NotTo(BeEmpty())
+	})
+
+	It("stops serving a share whose owner is locked", func() {
+		album := lib.Artists[0].Albums[0]
+		s := createShare(owner, url.Values{"id": {"al-" + itoa(album.ID)}})
+		token := tokenOf(s)
+		Expect(visit(token).Status).To(Equal(http.StatusOK))
+		_, err := app.core.Exec(
+			"UPDATE users SET locked_until = ? WHERE id = ?",
+			"2099-01-01 00:00:00+00:00", owner.ID,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_, err := app.core.Exec(
+				"UPDATE users SET locked_until = NULL WHERE id = ?", owner.ID,
+			)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		Expect(visit(token).Status).To(Equal(http.StatusNotFound))
+	})
+
+	It("serves a share's cover as the image type it is", func() {
+		own := app.addArtist(artistSpec{
+			Name: app.unique("Pixels"),
+			Albums: []albumSpec{{
+				Title: "Png", Year: 2020,
+				Tracks: []trackSpec{{Title: "One", Position: 1}},
+			}},
+		})
+		album := own.Albums[0]
+		dir := filepath.Join(app.ArtworkDir, "albums", itoa(album.ID))
+		Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+		DeferCleanup(os.RemoveAll, dir)
+		png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 32)...)
+		Expect(os.WriteFile(filepath.Join(dir, "poster.jpg"), png, 0o600)).
+			To(Succeed())
+		s := createShare(owner, url.Values{"id": {"al-" + itoa(album.ID)}})
+		cover := visit(tokenOf(s) + "/cover/" + itoa(album.ID))
+		Expect(cover.Status).To(Equal(http.StatusOK))
+		Expect(cover.Header.Get("Content-Type")).To(Equal("image/png"))
+	})
+
+	PIt("returns an absolute share URL with no proxy in front", func() {
+		// Needs the host to hand a guest the request's Host and scheme; the
+		// request carries neither today, so a direct client gets /share/<token>.
+		s := createShare(owner, url.Values{
+			"id": {"al-" + itoa(lib.Artists[0].Albums[0].ID)},
+		})
+		Expect(s["url"]).To(HavePrefix("http"))
 	})
 
 	It("expands an artist and a playlist and a track in the order shared", func() {

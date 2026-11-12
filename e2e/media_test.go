@@ -382,9 +382,14 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 		wantCode(u.get("getCoverArt", nil), 10)
 		wantCode(u.get("getCoverArt", url.Values{"id": {"nonsense"}}), 70)
 		wantCode(u.get("getCoverArt", url.Values{"id": {"tr-999999"}}), 70)
-		wantCode(u.get("getCoverArt", url.Values{"id": {"al-999999"}}), 70)
-		wantCode(u.get("getCoverArt", url.Values{"id": {"ar-999999"}}), 70)
 		wantCode(u.get("getCoverArt", url.Values{"id": {"rs-1"}}), 70)
+	})
+
+	It("answers a plain 404 for an album or artist that is gone", func() {
+		for _, id := range []string{"al-999999", "ar-999999"} {
+			raw := u.get("getCoverArt", url.Values{"id": {id}})
+			Expect(raw.Status).To(Equal(http.StatusNotFound), id)
+		}
 	})
 })
 
@@ -450,6 +455,25 @@ var _ = Describe("lyrics", Label("e2e"), func() {
 		Expect(ly["value"]).To(Equal("Load up on guns\nBring your friends"))
 		Expect(ly["artist"]).To(Equal(name))
 		Expect(ly["title"]).To(Equal("Verse"))
+	})
+
+	It("names the credited artist of a split-release song", func() {
+		credited := app.unique("Guest")
+		own := app.addArtist(artistSpec{
+			Name: app.unique("Owner"),
+			Albums: []albumSpec{{
+				Title: "Split", Year: 2020,
+				Tracks: []trackSpec{{Title: "Duet", Position: 1, Credit: credited}},
+			}},
+		})
+		sl := structured(trackID(own.Albums[0].Tracks[0]))
+		Expect(sl).To(BeEmpty(), "no lyrics are stored, so none are listed")
+		tagFile(own.Albums[0].Tracks[0].Path, "LYRICS", "[00:02.00]Together")
+		sl = structured(trackID(own.Albums[0].Tracks[0]))
+		Expect(sl).To(HaveLen(1))
+		Expect(sl[0]["displayArtist"]).To(Equal(credited))
+		ly := obj(u.call("getLyrics", url.Values{"title": {"Duet"}}), "lyrics")
+		Expect(ly["artist"]).To(Equal(credited))
 	})
 
 	It("reads lyrics embedded in a FLAC and in an MP3", func() {

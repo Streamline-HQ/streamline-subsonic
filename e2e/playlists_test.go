@@ -425,7 +425,10 @@ var _ = Describe("playlists", Label("e2e"), func() {
 		It("serves the album's cover as stored for one album", func() {
 			p := createPlaylistFor(u, "One", trackRef(dawn), trackRef(noon))
 			want, err := os.ReadFile(filepath.Join(
-				app.ArtworkDir, "albums", itoa(lib.Artists[0].Albums[0].ID), "poster.jpg",
+				app.ArtworkDir,
+				"albums",
+				itoa(lib.Artists[0].Albums[0].ID),
+				"poster.jpg",
 			))
 			Expect(err).NotTo(HaveOccurred())
 
@@ -446,7 +449,10 @@ var _ = Describe("playlists", Label("e2e"), func() {
 			gust := lib.track(0, 1, 0)
 			p := createPlaylistFor(u, "Two", trackRef(dawn), trackRef(gust))
 			single, err := os.ReadFile(filepath.Join(
-				app.ArtworkDir, "albums", itoa(lib.Artists[0].Albums[0].ID), "poster.jpg",
+				app.ArtworkDir,
+				"albums",
+				itoa(lib.Artists[0].Albums[0].ID),
+				"poster.jpg",
 			))
 			Expect(err).NotTo(HaveOccurred())
 

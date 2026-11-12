@@ -62,7 +62,7 @@ type openedShare struct {
 
 // openShare loads a live share. A missing or expired share is a plain 404, the
 // same for both, so a link reveals nothing. A share lives only while its owner
-// may still share: an admin revoking the permission ends every link the
+// is not locked and may still share: an admin revoking the permission ends every link the
 // account handed out, not just new ones. The ids are cheap to read; each route
 // loads only the tracks it serves.
 func openShare(token string) (*openedShare, *sdk.Response) {
@@ -89,7 +89,7 @@ func openShare(token string) (*openedShare, *sdk.Response) {
 		resp := shareInternal("loading a share's owner failed", err)
 		return nil, &resp
 	}
-	if !found || !owner.CanShare {
+	if !found || owner.Locked || !owner.CanShare {
 		return nil, &notFound
 	}
 	if err := loadShareItems([]*share{s}); err != nil {
@@ -206,17 +206,17 @@ func shareCover(req sdk.Request, token, rawID string) sdk.Response {
 	if !found || !mapped {
 		return shareNotFound()
 	}
+	rel := path.Join("albums", strconv.FormatUint(uint64(id), 10), "poster.jpg")
+	contentType, ok := posterContentType(path.Join(artwork.GuestPath, rel))
+	if !ok {
+		return shareNotFound()
+	}
 	return sdk.Response{
 		Status:  http.StatusOK,
 		Headers: map[string][]string{"X-Robots-Tag": {"noindex, nofollow"}},
 		SendFile: &sdk.SendFile{
-			Path: path.Join(
-				artwork.HostPath,
-				"albums",
-				strconv.FormatUint(uint64(id), 10),
-				"poster.jpg",
-			),
-			ContentType: "image/jpeg",
+			Path:        path.Join(artwork.HostPath, rel),
+			ContentType: contentType,
 		},
 	}
 }

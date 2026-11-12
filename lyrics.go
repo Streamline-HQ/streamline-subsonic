@@ -17,6 +17,15 @@ func init() {
 	register("getLyricsBySongId", lyricsBySongID)
 }
 
+// creditedArtist is the artist a song is named by: its own credit, else the
+// album owner.
+func creditedArtist(credit, owner string) string {
+	if credit == "" {
+		return owner
+	}
+	return credit
+}
+
 // lyricsMaxSongs bounds how many songs of one name getLyrics reads files for.
 const lyricsMaxSongs = 100
 
@@ -76,7 +85,7 @@ func lyricsByName(c *reqCtx) sdk.Response {
 	if title == "" {
 		return c.ok(&body{Lyrics: out})
 	}
-	sql := `SELECT t.id, t.title, ar.name
+	sql := `SELECT t.id, t.title, ar.name, t.artist_credit
 		FROM streamline_tracks t
 		JOIN streamline_albums al ON al.id = t.album_id
 		JOIN streamline_artists ar ON ar.id = al.artist_id
@@ -101,7 +110,11 @@ func lyricsByName(c *reqCtx) sdk.Response {
 			continue
 		}
 		if lyr, found := lyricsOf(c, hostPath); found {
-			out = &lyrics{Artist: r.str(2), Title: r.str(1), Value: lyr.Plain()}
+			out = &lyrics{
+				Artist: creditedArtist(r.str(3), r.str(2)),
+				Title:  r.str(1),
+				Value:  lyr.Plain(),
+			}
 			break
 		}
 	}
@@ -116,7 +129,7 @@ func lyricsBySongID(c *reqCtx) sdk.Response {
 		return c.failErr(err)
 	}
 	r, found, err := queryRow(
-		`SELECT t.title, ar.name
+		`SELECT t.title, ar.name, t.artist_credit
 		FROM streamline_tracks t
 		JOIN streamline_albums al ON al.id = t.album_id
 		JOIN streamline_artists ar ON ar.id = al.artist_id
@@ -141,7 +154,7 @@ func lyricsBySongID(c *reqCtx) sdk.Response {
 				lines = append(lines, lyricLine{Start: l.Start, Value: l.Value})
 			}
 			out.StructuredLyrics = append(out.StructuredLyrics, structuredLyrics{
-				DisplayArtist: r.str(1),
+				DisplayArtist: creditedArtist(r.str(2), r.str(1)),
 				DisplayTitle:  r.str(0),
 				Lang:          "xxx",
 				Synced:        lyr.Synced,
