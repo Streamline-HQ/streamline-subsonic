@@ -169,13 +169,15 @@ func setMark(
 	fn(&cur)
 	_, err := exec(
 		`INSERT INTO annotations
-			(user_id, target_kind, target_id, starred_at, rating, play_count, played_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+			(user_id, target_kind, target_id, starred_at, rating, play_count, played_at,
+			updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, target_kind, target_id) DO UPDATE SET
 			starred_at = excluded.starred_at, rating = excluded.rating,
-			play_count = excluded.play_count, played_at = excluded.played_at`,
+			play_count = excluded.play_count, played_at = excluded.played_at,
+			updated_at = excluded.updated_at`,
 		userID, kind, id, storedOrNil(cur.starredAt), cur.rating, cur.playCount,
-		storedOrNil(cur.playedAt),
+		storedOrNil(cur.playedAt), nowStored(),
 	)
 	return err
 }

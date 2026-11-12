@@ -94,7 +94,13 @@ func listsAlbums(c *reqCtx) ([]browseAlbum, error) {
 			offset,
 		)
 	case "highest":
-		q = listsMarked(c, "an.rating > 0", "an.rating DESC", size, offset)
+		q = listsMarked(
+			c,
+			"an.rating > 0",
+			"an.rating DESC, an.updated_at DESC",
+			size,
+			offset,
+		)
 	case "frequent":
 		q = listsMarked(
 			c,

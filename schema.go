@@ -45,6 +45,7 @@ var schema = []string{
 		rating INTEGER NOT NULL DEFAULT 0 CHECK (rating BETWEEN 0 AND 5),
 		play_count INTEGER NOT NULL DEFAULT 0,
 		played_at TEXT,
+		updated_at TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (user_id, target_kind, target_id)
 	) WITHOUT ROWID`,
 	`CREATE INDEX IF NOT EXISTS annotations_target

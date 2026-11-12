@@ -246,6 +246,25 @@ var _ = Describe("ratings", Label("e2e"), func() {
 		Expect(list(marksStarred2(u), "album")[0]["starred"]).NotTo(BeEmpty())
 	})
 
+	It("puts the most recently rated album first among equal ratings", func() {
+		first, second := lib.Artists[0].Albums[0], lib.Artists[0].Albums[1]
+		highest := func() []string {
+			return ids(list(obj(
+				u.call("getAlbumList2", url.Values{"type": {"highest"}}),
+				"albumList2",
+			), "album"))
+		}
+		u.call("setRating", url.Values{"id": {markAlbum(first)}, "rating": {"4"}})
+		u.call("setRating", url.Values{"id": {markAlbum(second)}, "rating": {"4"}})
+		Expect(highest()).To(Equal([]string{markAlbum(second), markAlbum(first)}))
+
+		u.call("setRating", url.Values{"id": {markAlbum(first)}, "rating": {"4"}})
+		Expect(highest()).To(Equal([]string{markAlbum(first), markAlbum(second)}))
+
+		u.call("setRating", url.Values{"id": {markAlbum(second)}, "rating": {"5"}})
+		Expect(highest()).To(Equal([]string{markAlbum(second), markAlbum(first)}))
+	})
+
 	It("lists the highest rated albums", func() {
 		album := lib.Artists[0].Albums[0]
 		marksRequireEndpoint(u, "getAlbumList2", url.Values{"type": {"highest"}})
