@@ -79,8 +79,6 @@ func headerValue(req sdk.Request, name string) string {
 	return ""
 }
 
-func (c *reqCtx) header(name string) string { return headerValue(c.req, name) }
-
 // param is the first value of a parameter, "" when absent.
 func (c *reqCtx) param(name string) string { return c.params.Get(name) }
 

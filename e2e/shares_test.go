@@ -183,13 +183,27 @@ var _ = Describe("shares", Label("e2e"), func() {
 		Expect(cover.Header.Get("Content-Type")).To(Equal("image/png"))
 	})
 
-	PIt("returns an absolute share URL with no proxy in front", func() {
-		// Needs the host to hand a guest the request's Host and scheme; the
-		// request carries neither today, so a direct client gets /share/<token>.
+	It("returns an absolute share URL with no proxy in front", func() {
 		s := createShare(owner, url.Values{
 			"id": {"al-" + itoa(lib.Artists[0].Albums[0].ID)},
 		})
-		Expect(s["url"]).To(HavePrefix("http"))
+		Expect(s["url"]).To(HavePrefix(app.BaseURL + "/share/"))
+	})
+
+	It("ignores forwarding headers from a client the host does not trust", func() {
+		q := owner.signed(url.Values{"id": {"tr-" + itoa(lib.track(0, 0, 0).ID)}})
+		raw := fetch(
+			http.MethodGet,
+			"/rest/createShare?"+q.Encode(),
+			nil,
+			http.Header{
+				"X-Forwarded-Host":  {"evil.example.com"},
+				"X-Forwarded-Proto": {"https"},
+			},
+		)
+		got := list(obj(raw.json(), "shares"), "share")
+		Expect(got).To(HaveLen(1))
+		Expect(got[0]["url"]).To(HavePrefix(app.BaseURL + "/share/"))
 	})
 
 	It("expands an artist and a playlist and a track in the order shared", func() {
@@ -212,22 +226,6 @@ var _ = Describe("shares", Label("e2e"), func() {
 		raw := owner.get("getShares", url.Values{"f": {""}})
 		Expect(raw.Header.Get("Content-Type")).To(Equal("text/xml; charset=utf-8"))
 		Expect(string(raw.Body)).To(ContainSubstring("<shares>"))
-	})
-
-	It("builds an absolute link when a proxy names the origin", func() {
-		q := owner.signed(url.Values{"id": {"tr-" + itoa(lib.track(0, 0, 0).ID)}})
-		raw := fetch(
-			http.MethodGet,
-			"/rest/createShare?"+q.Encode(),
-			nil,
-			http.Header{
-				"X-Forwarded-Host":  {"music.example.com"},
-				"X-Forwarded-Proto": {"https"},
-			},
-		)
-		got := list(obj(raw.json(), "shares"), "share")
-		Expect(got).To(HaveLen(1))
-		Expect(got[0]["url"]).To(HavePrefix("https://music.example.com/share/"))
 	})
 
 	It("serves only what the share holds", func() {

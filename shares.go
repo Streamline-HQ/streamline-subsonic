@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"math"
 	"path"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -390,25 +389,6 @@ func shareTrackOf(r row, co map[uint32][]shareCoArtist) shareTrack {
 	}
 }
 
-var originHost = regexp.MustCompile(`^[A-Za-z0-9.:\[\]-]{1,255}$`)
-
-// shareOrigin is the origin a client reached this server on, when a proxy in
-// front of it says so; empty otherwise, which leaves the link relative to the
-// host that served it. The host does not hand a guest the request's Host.
-func shareOrigin(c *reqCtx) string {
-	host := strings.TrimSpace(c.header("X-Forwarded-Host"))
-	host, _, _ = strings.Cut(host, ",")
-	host = strings.TrimSpace(host)
-	if !originHost.MatchString(host) {
-		return ""
-	}
-	proto := strings.ToLower(strings.TrimSpace(c.header("X-Forwarded-Proto")))
-	if proto != "https" {
-		proto = "http"
-	}
-	return proto + "://" + host
-}
-
 // toShareInfo describes s for its owner, whose tracks have been expanded.
 func toShareInfo(c *reqCtx, s *share, ts []shareTrack) shareInfo {
 	entries := make([]child, 0, len(ts))
@@ -417,7 +397,7 @@ func toShareInfo(c *reqCtx, s *share, ts []shareTrack) shareInfo {
 	}
 	return shareInfo{
 		ID:          ids.Share(s.ID),
-		URL:         shareOrigin(c) + "/share/" + s.Token,
+		URL:         c.req.Origin + "/share/" + s.Token,
 		Description: s.Description,
 		Username:    c.user.Email,
 		Created:     optTimestamp(s.Created),
