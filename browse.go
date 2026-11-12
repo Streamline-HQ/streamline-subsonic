@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -42,15 +41,6 @@ func init() {
 	register("getSimilarSongs", getSimilarSongs)
 	register("getSimilarSongs2", getSimilarSongs2)
 	register("getTopSongs", getTopSongs)
-}
-
-var browseContentTypes = map[string]string{
-	"flac": "audio/flac",
-	"mp3":  "audio/mpeg",
-	"m4a":  "audio/mp4",
-	"ogg":  "audio/ogg",
-	"opus": "audio/opus",
-	"aac":  "audio/aac",
 }
 
 // What a client can play: a track with a file that is still on disk. These
@@ -302,194 +292,6 @@ func browseAlbumChildren(als []browseAlbum) []child {
 	return out
 }
 
-type browseSongQuery struct {
-	join  string
-	where string
-	args  []any
-	order string
-	limit int
-	// offset applies with limit.
-	offset int
-}
-
-// The first file a track still has on disk is the one a client is offered.
-const browseSongSQL = `SELECT t.id, t.mbid, t.title, t.disc, t.position, t.duration,
-	t.artist_credit, f.added_at,
-	al.id, al.title, al.release_date,
-	ar.id, ar.name, ar.genre,
-	f.path, f.size, f.format, f.duration, f.bitrate
-FROM streamline_tracks t
-JOIN streamline_albums al ON al.id = t.album_id
-JOIN streamline_artists ar ON ar.id = al.artist_id
-JOIN streamline_music_files f ON f.id = (
-	SELECT min(pf.id) FROM streamline_music_files pf
-	WHERE pf.track_id = t.id AND pf.missing = 0)`
-
-type browseSong struct {
-	id         uint32
-	mbid       string
-	title      string
-	disc       int64
-	position   int64
-	duration   uint32
-	credit     string
-	added      string
-	albumID    uint32
-	albumTitle string
-	released   string
-	artistID   uint32
-	artistName string
-	genre      string
-	path       string
-	size       int64
-	format     string
-	fileSecs   uint32
-	bitrate    int64
-}
-
-// browseSongs reads the playable tracks matching q as songs. A track with no
-// file on disk is never returned.
-func browseSongs(q browseSongQuery) ([]child, error) {
-	sql := browseSongSQL + " " + q.join + " WHERE " + q.where
-	if q.order != "" {
-		sql += " ORDER BY " + q.order
-	}
-	args := slices.Clone(q.args)
-	if q.limit > 0 {
-		sql += " LIMIT ? OFFSET ?"
-		args = append(args, q.limit, q.offset)
-	}
-	rows, err := query(sql, args...)
-	if err != nil {
-		return nil, err
-	}
-	songs := make([]browseSong, len(rows))
-	for i, r := range rows {
-		songs[i] = browseSong{
-			id: r.uint(0), mbid: r.str(1), title: r.str(2), disc: r.int(3),
-			position: r.int(4), duration: r.uint(5), credit: r.str(6),
-			added: r.str(7), albumID: r.uint(8), albumTitle: r.str(9),
-			released: r.str(10), artistID: r.uint(11), artistName: r.str(12),
-			genre: r.str(13), path: r.str(14), size: r.int(15), format: r.str(16),
-			fileSecs: r.uint(17), bitrate: r.int(18),
-		}
-	}
-	coArtists, err := browseCoArtists(songs)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]child, len(songs))
-	for i, s := range songs {
-		out[i] = s.toChild(coArtists[s.albumID])
-	}
-	return out, nil
-}
-
-type browseCredited struct {
-	id   uint32
-	name string
-}
-
-// browseCoArtists names the other artists of every album a split release's
-// song needs one for: a song whose own credit is not its album's owner.
-func browseCoArtists(songs []browseSong) (map[uint32][]browseCredited, error) {
-	var albums []uint32
-	for _, s := range songs {
-		if s.credit != "" && !strings.EqualFold(s.credit, s.artistName) &&
-			!slices.Contains(albums, s.albumID) {
-			albums = append(albums, s.albumID)
-		}
-	}
-	rows, err := queryIn(
-		`SELECT aa.album_id, x.id, x.name FROM streamline_album_artists aa
-		JOIN streamline_artists x ON x.id = aa.artist_id
-		WHERE aa.owner = 0 AND aa.album_id IN ({in}) ORDER BY x.id`,
-		albums,
-	)
-	if err != nil {
-		return nil, err
-	}
-	out := map[uint32][]browseCredited{}
-	for _, r := range rows {
-		out[r.uint(0)] = append(
-			out[r.uint(0)],
-			browseCredited{id: r.uint(1), name: r.str(2)},
-		)
-	}
-	return out, nil
-}
-
-func browseSuffix(p, format string) string {
-	if s := strings.TrimPrefix(strings.ToLower(path.Ext(p)), "."); s != "" {
-		return s
-	}
-	if format == "other" {
-		return ""
-	}
-	return format
-}
-
-func browseContentType(suffix string) string {
-	if ct, ok := browseContentTypes[suffix]; ok {
-		return ct
-	}
-	return "application/octet-stream"
-}
-
-// browseKbps is the file's probed bitrate, else one estimated from its size
-// over duration seconds; 0 when neither is known.
-func browseKbps(bitrate, size int64, duration uint32) uint32 {
-	if kbps := bitrate / 1000; kbps > 0 || duration == 0 || size <= 0 {
-		return uint32(min(max(kbps, 0), math.MaxUint32))
-	}
-	est := min(size*8/int64(duration)/1000, math.MaxUint32)
-	return uint32(est) //nolint:gosec // clamped above
-}
-
-func (s browseSong) toChild(co []browseCredited) child {
-	suffix := browseSuffix(s.path, s.format)
-	duration := s.fileSecs
-	if duration == 0 {
-		duration = s.duration
-	}
-	c := child{
-		ID:            ids.Track(s.id),
-		Parent:        ids.Album(s.albumID),
-		Title:         s.title,
-		Album:         s.albumTitle,
-		Artist:        s.artistName,
-		Track:         uint16(min(max(s.position, 0), math.MaxUint16)),
-		DiscNumber:    uint8(min(max(s.disc, 0), math.MaxUint8)),
-		Year:          browseYear(s.released),
-		Genre:         s.genre,
-		CoverArt:      ids.Album(s.albumID),
-		Size:          s.size,
-		ContentType:   browseContentType(suffix),
-		Suffix:        suffix,
-		Duration:      duration,
-		BitRate:       browseKbps(s.bitrate, s.size, duration),
-		Created:       timestamp(parseTime(s.added)),
-		AlbumID:       ids.Album(s.albumID),
-		ArtistID:      ids.Artist(s.artistID),
-		Type:          "music",
-		MediaType:     "song",
-		MusicBrainzID: s.mbid,
-	}
-	// A song of a split release is named by its own credited artist, with
-	// that artist's id when the album is listed under them; one credited to
-	// the album's owner keeps it.
-	if s.credit == "" || strings.EqualFold(s.credit, s.artistName) {
-		return c
-	}
-	c.Artist, c.ArtistID = s.credit, ""
-	for _, other := range co {
-		if strings.EqualFold(other.name, s.credit) {
-			c.ArtistID = ids.Artist(other.id)
-		}
-	}
-	return c
-}
-
 func browseSortKey(a browseArtist) string {
 	if a.sortName != "" {
 		return a.sortName
@@ -618,7 +420,7 @@ func browseLoadAlbum(id uint32) (browseAlbum, error) {
 }
 
 func browseAlbumSongs(albumID uint32) ([]child, error) {
-	return browseSongs(browseSongQuery{
+	return songChildren(songQuery{
 		where: "t.album_id = ?",
 		args:  []any{albumID},
 		order: "t.disc, t.position, t.id",
@@ -666,7 +468,7 @@ func getSong(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	songs, err := browseSongs(browseSongQuery{where: "t.id = ?", args: []any{id}})
+	songs, err := songChildren(songQuery{where: "t.id = ?", args: []any{id}})
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -876,7 +678,7 @@ func browseSimilarSongs(c *reqCtx) ([]child, error) {
 		where = "(" + where + " OR ar.genre = ?)"
 		args = append(args, ar.genre)
 	}
-	return browseSongs(browseSongQuery{
+	return songChildren(songQuery{
 		where: where,
 		args:  args,
 		order: "RANDOM()",
@@ -918,7 +720,7 @@ func getTopSongs(c *reqCtx) sdk.Response {
 	if len(artists) == 0 {
 		return c.respond(&body{TopSongs: out})
 	}
-	ranked, err := browseSongs(browseSongQuery{
+	ranked, err := songChildren(songQuery{
 		join: `JOIN (SELECT target_id AS tid, sum(play_count) AS plays
 			FROM annotations WHERE target_kind = 'tr' AND play_count > 0
 			GROUP BY target_id) pl ON pl.tid = t.id`,

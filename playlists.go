@@ -134,7 +134,7 @@ func playlistWithEntries(p playlistRecord) (*playlistWith, error) {
 	if err != nil {
 		return nil, err
 	}
-	songs, err := playlistSongs(stored[p.id])
+	songs, err := songsByID(stored[p.id])
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func getPlaylists(c *reqCtx) sdk.Response {
 	for _, id := range listed {
 		every = append(every, stored[id]...)
 	}
-	songs, err := playlistSongs(every)
+	songs, err := songsByID(every)
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -423,7 +423,7 @@ func playlistRemoveEntries(stored []uint32, remove []string) ([]uint32, error) {
 	if len(remove) == 0 {
 		return slices.Clone(stored), nil
 	}
-	songs, err := playlistSongs(stored)
+	songs, err := songsByID(stored)
 	if err != nil {
 		return nil, err
 	}

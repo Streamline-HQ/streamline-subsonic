@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math"
+
 	"github.com/datahearth/streamline/extensions/sdk"
 	"github.com/streamline-hq/streamline-subsonic/ids"
 )
@@ -48,7 +50,7 @@ func loadStarred(c *reqCtx) (*starredSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	songs, err := marksSongs(trIDs)
+	songs, err := songsByID(trIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -189,4 +191,16 @@ func getStarred2(c *reqCtx) sdk.Response {
 	return c.respond(&body{Starred2: &starred2{
 		Artist: set.artists, Album: set.albums, Song: set.songs,
 	}})
+}
+
+// marksLiveTrack holds for a track t with a file on disk.
+const marksLiveTrack = `EXISTS (SELECT 1 FROM streamline_music_files f
+	WHERE f.track_id = t.id AND f.missing = 0)`
+
+func marksYear(releaseDate string) uint16 {
+	t := parseTime(releaseDate)
+	if t.IsZero() {
+		return 0
+	}
+	return uint16(min(max(t.Year(), 0), math.MaxUint16))
 }

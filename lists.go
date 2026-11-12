@@ -144,7 +144,7 @@ func getRandomSongs(c *reqCtx) sdk.Response {
 	if browseOtherFolder(c) {
 		return c.respond(&body{RandomSongs: out})
 	}
-	q := browseSongQuery{
+	q := songQuery{
 		where: "1 = 1",
 		order: "RANDOM()",
 		limit: c.intParam("size", browseListSize, 1, browseMaxList),
@@ -161,7 +161,7 @@ func getRandomSongs(c *reqCtx) sdk.Response {
 		q.where += " AND al.release_date IS NOT NULL AND " + listsYear + " <= ?"
 		q.args = append(q.args, c.intParam("toYear", 9999, 0, 9999))
 	}
-	songs, err := browseSongs(q)
+	songs, err := songChildren(q)
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -178,7 +178,7 @@ func getSongsByGenre(c *reqCtx) sdk.Response {
 	if browseOtherFolder(c) {
 		return c.respond(&body{SongsByGenre: out})
 	}
-	found, err := browseSongs(browseSongQuery{
+	found, err := songChildren(songQuery{
 		where:  "lower(ar.genre) = lower(?)",
 		args:   []any{genre},
 		order:  "t.id",

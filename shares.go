@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"math"
-	"path"
-	"slices"
 	"strings"
 	"time"
 
@@ -216,184 +214,11 @@ func sharePlaylistTracks(id, ownerID uint32) ([]row, error) {
 	)
 }
 
-// shareTrack is a playable track as a share shows it: the song entry and the
-// album facts the page needs.
-type shareTrack struct {
-	song       child
-	trackID    uint32
-	albumID    uint32
-	albumTitle string
-	artist     string
-}
-
-var shareContentTypes = map[string]string{
-	"flac": "audio/flac",
-	"mp3":  "audio/mpeg",
-	"m4a":  "audio/mp4",
-	"ogg":  "audio/ogg",
-	"opus": "audio/opus",
-	"aac":  "audio/aac",
-}
-
-func shareSuffix(filePath, format string) string {
-	if s := strings.TrimPrefix(strings.ToLower(path.Ext(filePath)), "."); s != "" {
-		return s
-	}
-	if format == "other" {
-		return ""
-	}
-	return format
-}
-
-func shareContentType(suffix string) string {
-	if ct, ok := shareContentTypes[suffix]; ok {
-		return ct
-	}
-	return "application/octet-stream"
-}
-
-// shareKbps is the file's probed bitrate, else one estimated from its size
-// over the duration; 0 when neither is known.
-func shareKbps(bitrate, size int64, duration uint32) uint32 {
-	if kbps := bitrate / 1000; kbps > 0 || duration == 0 || size <= 0 {
-		return uint32(min(max(kbps, 0), math.MaxUint32))
-	}
-	return uint32(min(max(size*8/int64(duration)/1000, 0), math.MaxUint32))
-}
-
-// shareSongs loads the playable tracks among ids, in the order of ids: those
-// with a file on disk, the lowest-id file being the one played.
-func shareSongs(want []uint32) ([]shareTrack, error) {
-	if len(want) == 0 {
-		return nil, nil
-	}
-	uniq := slices.Clone(want)
-	slices.Sort(uniq)
-	uniq = slices.Compact(uniq)
-	rows, err := queryIn(
-		`SELECT t.id, t.mbid, t.album_id, t.title, t.disc, t.position,
-			t.duration, t.artist_credit,
-			al.title, al.release_date, ar.id, ar.name, ar.genre,
-			f.path, f.format, f.size, f.duration, f.bitrate, f.added_at
-		FROM streamline_tracks t
-		JOIN streamline_albums al ON al.id = t.album_id
-		JOIN streamline_artists ar ON ar.id = al.artist_id
-		JOIN streamline_music_files f ON f.id = (
-			SELECT min(id) FROM streamline_music_files
-			WHERE track_id = t.id AND missing = 0
-		)
-		WHERE t.id IN ({in})`,
-		uniq,
-	)
-	if err != nil {
-		return nil, err
-	}
-	albumIDs := make([]uint32, 0, len(rows))
-	for _, r := range rows {
-		albumIDs = append(albumIDs, r.uint(2))
-	}
-	co, err := shareCoArtists(albumIDs)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[uint32]shareTrack, len(rows))
-	for _, r := range rows {
-		byID[r.uint(0)] = shareTrackOf(r, co)
-	}
-	out := make([]shareTrack, 0, len(want))
-	for _, id := range want {
-		if t, ok := byID[id]; ok {
-			out = append(out, t)
-		}
-	}
-	return out, nil
-}
-
-// shareCoArtist is an artist an album is listed under without owning it.
-type shareCoArtist struct {
-	id   uint32
-	name string
-}
-
-func shareCoArtists(albumIDs []uint32) (map[uint32][]shareCoArtist, error) {
-	rows, err := queryIn(
-		`SELECT aa.album_id, ar.id, ar.name
-		FROM streamline_album_artists aa
-		JOIN streamline_artists ar ON ar.id = aa.artist_id
-		WHERE aa.owner = 0 AND aa.album_id IN ({in})`,
-		albumIDs,
-	)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[uint32][]shareCoArtist)
-	for _, r := range rows {
-		out[r.uint(0)] = append(
-			out[r.uint(0)],
-			shareCoArtist{id: r.uint(1), name: r.str(2)},
-		)
-	}
-	return out, nil
-}
-
-func shareTrackOf(r row, co map[uint32][]shareCoArtist) shareTrack {
-	var (
-		trackID    = r.uint(0)
-		albumID    = r.uint(2)
-		credit     = r.str(7)
-		albumTitle = r.str(8)
-		ownerName  = r.str(11)
-		filePath   = r.str(13)
-		suffix     = shareSuffix(filePath, r.str(14))
-		duration   = r.uint(16)
-	)
-	if duration == 0 {
-		duration = r.uint(6)
-	}
-	song := child{
-		ID:            ids.Track(trackID),
-		Parent:        ids.Album(albumID),
-		Title:         r.str(3),
-		Album:         albumTitle,
-		Artist:        ownerName,
-		Track:         uint16(min(max(r.int(5), 0), math.MaxUint16)),
-		DiscNumber:    uint8(min(max(r.int(4), 0), math.MaxUint8)),
-		Year:          uint16(min(max(r.time(9).Year(), 0), math.MaxUint16)),
-		Genre:         r.str(12),
-		CoverArt:      ids.Album(albumID),
-		Size:          r.int(15),
-		ContentType:   shareContentType(suffix),
-		Suffix:        suffix,
-		Duration:      duration,
-		BitRate:       shareKbps(r.int(17), r.int(15), duration),
-		Created:       optTimestamp(r.time(18)),
-		AlbumID:       ids.Album(albumID),
-		ArtistID:      ids.Artist(r.uint(10)),
-		Type:          "music",
-		MediaType:     "song",
-		MusicBrainzID: r.str(1),
-	}
-	// A song of a split release is named by its own credited artist, with
-	// that artist's id when the album is listed under them.
-	if credit != "" && !strings.EqualFold(credit, ownerName) {
-		song.Artist, song.ArtistID = credit, ""
-		for _, a := range co[albumID] {
-			if strings.EqualFold(a.name, credit) {
-				song.ArtistID = ids.Artist(a.id)
-			}
-		}
-	}
-	return shareTrack{
-		song: song, trackID: trackID, albumID: albumID,
-		albumTitle: albumTitle, artist: ownerName,
-	}
-}
-
 // toShareInfo describes s for its owner, whose tracks have been expanded.
-func toShareInfo(c *reqCtx, s *share, ts []shareTrack) shareInfo {
+func toShareInfo(c *reqCtx, s *share, ts []song) shareInfo {
 	entries := make([]child, 0, len(ts))
 	for _, t := range ts {
-		entries = append(entries, t.song)
+		entries = append(entries, t.child)
 	}
 	return shareInfo{
 		ID:          ids.Share(s.ID),
@@ -433,17 +258,17 @@ func getShares(c *reqCtx) sdk.Response {
 		}
 		all = append(all, byShare[i]...)
 	}
-	loaded, err := shareSongs(all)
+	loaded, err := songsInOrder(all)
 	if err != nil {
 		return c.failErr(err)
 	}
-	byTrack := make(map[string]shareTrack, len(loaded))
+	byTrack := make(map[string]song, len(loaded))
 	for _, t := range loaded {
-		byTrack[t.song.ID] = t
+		byTrack[t.ID] = t
 	}
 	out := &shares{Share: make([]shareInfo, 0, len(ss))}
 	for i, s := range ss {
-		ts := make([]shareTrack, 0, len(byShare[i]))
+		ts := make([]song, 0, len(byShare[i]))
 		for _, id := range byShare[i] {
 			if t, ok := byTrack[ids.Track(id)]; ok {
 				ts = append(ts, t)
@@ -512,7 +337,7 @@ func createShare(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	ts, err := shareSongs(trackIDs)
+	ts, err := songsInOrder(trackIDs)
 	if err != nil {
 		return c.failErr(err)
 	}

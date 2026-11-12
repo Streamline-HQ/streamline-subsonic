@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/datahearth/streamline/extensions/sdk"
+	"github.com/streamline-hq/streamline-subsonic/transcode"
 )
 
 func init() { registerShare(serveShare) }
@@ -114,12 +115,6 @@ func sharePathID(raw string) (uint32, bool) {
 	return uint32(n), err == nil
 }
 
-// shareMinKbps and shareMaxKbps bound a capped transcode.
-const (
-	shareMinKbps = 32
-	shareMaxKbps = 320
-)
-
 func shareStream(req sdk.Request, token, rawID string) sdk.Response {
 	s, failed := openShare(token)
 	if failed != nil {
@@ -131,14 +126,14 @@ func shareStream(req sdk.Request, token, rawID string) sdk.Response {
 	if !ok || !s.owner.CanStream || !slices.Contains(s.trackIDs, id) {
 		return shareNotFound()
 	}
-	ts, err := shareSongs([]uint32{id})
+	ts, err := songsInOrder([]uint32{id})
 	if err != nil {
 		return shareInternal("loading a shared track failed", err)
 	}
 	if len(ts) == 0 {
 		return shareNotFound()
 	}
-	song := ts[0].song
+	song := ts[0]
 	r, found, err := queryRow(
 		`SELECT path FROM streamline_music_files
 		WHERE track_id = ? AND missing = 0 ORDER BY id LIMIT 1`, id,
@@ -163,12 +158,17 @@ func shareStream(req sdk.Request, token, rawID string) sdk.Response {
 	// ffmpeg the host serves the original.
 	limit := int(s.owner.MaxBitRate)
 	if limit > 0 && (song.BitRate == 0 || int(song.BitRate) > limit) {
+		mp3 := transcode.Options{
+			Format:      "mp3",
+			BitrateKbps: min(max(limit, transcode.MinKbps), transcode.MaxKbps),
+		}
+		args, err := transcode.Args(hostPath, mp3)
+		if err != nil {
+			return shareInternal("building a share stream failed", err)
+		}
 		resp.StreamFFmpeg = &sdk.StreamFFmpeg{
-			Args: shareMP3Args(
-				hostPath,
-				min(max(limit, shareMinKbps), shareMaxKbps),
-			),
-			ContentType: "audio/mpeg",
+			Args:        args,
+			ContentType: transcode.Formats[mp3.Format].ContentType,
 			Headers:     resp.Headers,
 			Fallback:    original,
 		}
@@ -176,22 +176,6 @@ func shareStream(req sdk.Request, token, rawID string) sdk.Response {
 	}
 	resp.SendFile = original
 	return resp
-}
-
-// shareMP3Args is the ffmpeg command line that converts src to an MP3 stream
-// on stdout: first audio stream only, no tags, no video.
-func shareMP3Args(src string, kbps int) []string {
-	return []string{
-		"-hide_banner", "-nostdin", "-loglevel", "error",
-		"-i", src,
-		"-map", "0:a:0",
-		"-vn", "-sn", "-dn",
-		"-map_metadata", "-1",
-		"-c:a", "libmp3lame",
-		"-b:a", strconv.Itoa(kbps) + "k",
-		"-f", "mp3",
-		"pipe:1",
-	}
 }
 
 func shareCover(req sdk.Request, token, rawID string) sdk.Response {
@@ -274,7 +258,7 @@ func shareTwoDigits(n int) string {
 
 // shareTitle names the page after what was shared: the single album when the
 // share is one, else the description.
-func shareTitle(description string, ts []shareTrack) string {
+func shareTitle(description string, ts []song) string {
 	if description != "" {
 		return description
 	}
@@ -287,7 +271,7 @@ func shareTitle(description string, ts []shareTrack) string {
 			return "Shared music"
 		}
 	}
-	return first.albumTitle + " — " + first.artist
+	return first.Album + " — " + first.owner
 }
 
 func sharePage(req sdk.Request, token string) sdk.Response {
@@ -295,7 +279,7 @@ func sharePage(req sdk.Request, token string) sdk.Response {
 	if failed != nil {
 		return *failed
 	}
-	ts, err := shareSongs(s.trackIDs)
+	ts, err := songsInOrder(s.trackIDs)
 	if err != nil {
 		return shareInternal("expanding a share failed", err)
 	}
@@ -321,10 +305,10 @@ func sharePage(req sdk.Request, token string) sdk.Response {
 	for _, t := range ts {
 		data.Tracks = append(data.Tracks, sharePageTrack{
 			ID:       t.trackID,
-			Title:    t.song.Title,
-			Artist:   t.song.Artist,
-			Album:    t.song.Album,
-			Duration: shareClock(t.song.Duration),
+			Title:    t.Title,
+			Artist:   t.Artist,
+			Album:    t.Album,
+			Duration: shareClock(t.Duration),
 		})
 	}
 	if len(ts) > 0 {

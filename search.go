@@ -79,7 +79,7 @@ func searchAll(c *reqCtx) (searchHits, error) {
 	}
 
 	if n := c.intParam("songCount", browsePageSize, 0, maxSearchSize); n > 0 {
-		songs, err := browseSongs(browseSongQuery{
+		songs, err := songChildren(songQuery{
 			where:  "(lower(t.title)" + searchLike + " OR " + searchAlbumMatch + ")",
 			args:   []any{pattern, pattern, pattern},
 			order:  "t.title, t.id",
@@ -161,7 +161,7 @@ func searchLegacy(c *reqCtx) sdk.Response {
 		return c.failErr(err)
 	}
 	offset := c.intParam("offset", 0, 0, browseMaxOffset)
-	songs, err := browseSongs(browseSongQuery{
+	songs, err := songChildren(songQuery{
 		where:  where,
 		args:   args,
 		order:  "t.title, t.id",

@@ -30,7 +30,7 @@ func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	songs, err := playlistSongs(stored[p.id])
+	songs, err := songsByID(stored[p.id])
 	if err != nil {
 		return c.failErr(err)
 	}

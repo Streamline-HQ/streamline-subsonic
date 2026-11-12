@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path"
@@ -20,22 +19,6 @@ func init() {
 	register("download", mediaDownload)
 	register("getCoverArt", mediaCoverArt)
 	register("getAvatar", mediaAvatar)
-}
-
-var mediaContentTypes = map[string]string{
-	"flac": "audio/flac",
-	"mp3":  "audio/mpeg",
-	"m4a":  "audio/mp4",
-	"ogg":  "audio/ogg",
-	"opus": "audio/opus",
-	"aac":  "audio/aac",
-}
-
-func mediaContentType(suffix string) string {
-	if ct, ok := mediaContentTypes[suffix]; ok {
-		return ct
-	}
-	return "application/octet-stream"
 }
 
 // mediaFile is the first file on disk of a track.
@@ -73,15 +56,7 @@ func mediaTrackFile(trackID uint32) (*mediaFile, error) {
 	}, nil
 }
 
-func (f *mediaFile) suffix() string {
-	if s := strings.TrimPrefix(strings.ToLower(path.Ext(f.path)), "."); s != "" {
-		return s
-	}
-	if f.format == "other" {
-		return ""
-	}
-	return f.format
-}
+func (f *mediaFile) suffix() string { return songSuffix(f.path, f.format) }
 
 // kbps is the bitrate a song listing reports: the probed one, else an
 // estimate from the size and length, so an unprobed file is not taken for one
@@ -91,11 +66,7 @@ func (f *mediaFile) kbps() uint32 {
 	if duration == 0 {
 		duration = f.trackDuration
 	}
-	if kbps := f.bitrate / 1000; kbps > 0 || duration == 0 || f.size <= 0 {
-		return uint32(min(max(kbps, 0), math.MaxUint32))
-	}
-	estimate := min(f.size*8/int64(duration)/1000, math.MaxUint32)
-	return uint32(estimate) //nolint:gosec // clamped above
+	return songKbps(f.bitrate, f.size, duration)
 }
 
 func mediaFileMissing() error {
@@ -118,7 +89,7 @@ func (f *mediaFile) check(c *reqCtx) error {
 }
 
 func (f *mediaFile) original(attachment bool) sdk.Response {
-	sf := &sdk.SendFile{Path: f.path, ContentType: mediaContentType(f.suffix())}
+	sf := &sdk.SendFile{Path: f.path, ContentType: songContentType(f.suffix())}
 	if attachment {
 		sf.Filename = path.Base(f.path)
 	}

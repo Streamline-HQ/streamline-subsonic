@@ -43,7 +43,7 @@ func getBookmarks(c *reqCtx) sdk.Response {
 	for i, r := range rows {
 		trackIDs[i] = r.uint(0)
 	}
-	songs, err := queueSongs(trackIDs)
+	songs, err := songsByID(trackIDs)
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -140,7 +140,7 @@ func queueLoad(userID uint32) (saved queueSaved, found bool, err error) {
 	for i, r := range rows {
 		trackIDs[i] = r.uint(0)
 	}
-	songs, err := queueSongs(trackIDs)
+	songs, err := songsByID(trackIDs)
 	if err != nil {
 		return queueSaved{}, false, err
 	}
