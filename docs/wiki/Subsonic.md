@@ -1,6 +1,6 @@
 # Subsonic
 
-Streamline speaks the Subsonic API (version 1.16.1) at `/rest`, plus the OpenSubsonic extensions most modern apps look for. Point any Subsonic app at your Streamline address (`https://your-host`, the app adds `/rest` itself) and sign in with your **email** as the user name and your **Subsonic password** as the password. Generate that password on the Account page; it is separate from your login password and never works for the web UI.
+The **Subsonic extension** ([streamline-subsonic](https://github.com/streamline-hq/streamline-subsonic), installed from Settings → Extensions, see [Extensions](Extensions)) speaks the Subsonic API (version 1.16.1) at `/rest`, plus the OpenSubsonic extensions most modern apps look for. Point any Subsonic app at your Streamline address (`https://your-host`, the app adds `/rest` itself) and sign in with your **email** as the user name and your **Subsonic password** as the password. Generate that password on the Account page (the **Subsonic** card, shown once the extension runs); it is separate from your login password and never works for the web UI.
 
 Apps such as Symfonium, DSub, Ultrasonic, Tempo, play:Sub, Feishin and Sublime Music speak this API.
 
@@ -20,7 +20,7 @@ Apps such as Symfonium, DSub, Ultrasonic, Tempo, play:Sub, Feishin and Sublime M
 | Lyrics | From a `.lrc` file next to the song (timed, karaoke-style in apps that support it) or from lyrics embedded in the file's tags |
 | Downloads | The original file, for offline listening |
 | Internet radio | A shared list of radio streams; any user can listen, only admins can add, edit or remove stations |
-| Library scan | "Rescan" in an app checks every file Streamline tracks and marks missing ones (admins only) |
+| Library scan | "Rescan" in an app starts Streamline's library scan (admins only); the scan status reports how many tracks have a file |
 | Users | Read your own account and change your own Subsonic password; admins can list accounts. Accounts and their Subsonic permissions are managed in the web UI |
 
 Apps see only what you can play: an album appears once at least one of its songs is on disk, and an artist once one of their albums does. The rest of a followed discography (albums, EPs and singles Streamline knows about but holds no file for) stays out of the apps, and an album's song count and length cover its playable songs. **Newest** lists albums by when their music arrived, not by when the artist was added.
@@ -31,7 +31,7 @@ Not available: podcasts, chat, jukebox mode, video and avatars.
 
 Stars, ratings and play counts belong to you: other users never see yours. Playing a song through to the end in an app with scrobbling turned on counts one play on the song, its album and its artist, so "most played" and "recently played" album lists fill in as you listen. **Top songs** for an artist rank their songs by plays across every user, and stay empty until someone has listened.
 
-**Now playing** shows what everyone is listening to, by user name (email) and app. An entry disappears when the song finishes, or a few minutes after the song should have ended if the app never says so. It is kept in memory only, so a restart clears it.
+**Now playing** shows what everyone is listening to, by user name (email) and app. An entry disappears when the song finishes, or a few minutes after the song should have ended if the app never says so. It is kept in the extension's own database.
 
 ## Playlists
 
@@ -66,9 +66,13 @@ Accounts are managed by an admin in Streamline's web UI (Settings → Users), ne
 
 - **The user name is the email** you sign in with.
 - **Changing your password from an app** changes your own Subsonic password only, never your web login password, and only if your account allows it. Nobody can change another account's password from an app, admins included.
-- **Permissions.** On a user's page in the web UI, the **Subsonic apps** card has switches for what the account may do from an app: stream, download, create and edit playlists, create share links, rate, and change their own Subsonic password. Every account starts with all of them on. They never limit the web UI, and browsing, searching, starring and scrobbling are always allowed.
+- **Permissions.** On a user's page in the web UI, the **Subsonic apps** card (an admin edits it for another user) has switches for what the account may do from an app: stream, download, create and edit playlists, create share links, rate, and change their own Subsonic password. Every account starts with all of them on. They never limit the web UI, and browsing, searching, starring and scrobbling are always allowed.
 - **Maximum bitrate.** The same card caps the account's streams (64 to 320 kbps, or no limit). Every stream above the cap is converted, even when the app asks for the original file. The cap needs ffmpeg: without it, or when the eight conversion slots are busy, the original file is sent.
 
 ## Library scan
 
-Streamline does not scan a music folder for new files: music arrives through downloads and imports (see [Importing an Existing Library](Importing-an-Existing-Library)). A rescan from an app runs the **drift check** scheduled job, which notices files that were deleted or moved outside Streamline. Only admins can start it.
+Streamline does not scan a music folder for new files: music arrives through downloads and imports (see [Importing an Existing Library](Importing-an-Existing-Library)). A rescan from an app starts the library scan the host offers extensions, which notices files that were deleted or moved outside Streamline; `getScanStatus` answers whether it is running and how many tracks hold a file. Only admins can start it.
+
+## Starting fresh
+
+This extension replaces the Subsonic server that used to be built into Streamline, and nothing is carried over from it: every account has to generate a new Subsonic password, and stars, ratings, play counts, playlists, play queues, bookmarks, shares and radio stations start empty.
