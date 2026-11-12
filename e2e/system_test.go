@@ -155,6 +155,14 @@ var _ = Describe("system endpoints", Label("e2e"), func() {
 		Expect(errObj["message"]).To(Equal("Not implemented"))
 	})
 
+	It("answers an unknown endpoint of any length with error 0 under /rest", func() {
+		for _, name := range []string{"x", "AbCdEfGhIjKlMnOpQrStUvWxYz0123"} {
+			errObj := u.callError(name, nil)
+			Expect(errorCode(errObj)).To(Equal(0), name)
+			Expect(errObj["message"]).To(Equal("Not implemented"), name)
+		}
+	})
+
 	It("answers a malformed query with error 0", func() {
 		raw := fetch(http.MethodGet, "/rest/ping?u=%zz&f=json", nil, nil)
 		Expect(raw.Status).To(Equal(http.StatusOK))
@@ -166,6 +174,16 @@ var _ = Describe("system endpoints", Label("e2e"), func() {
 	It("keeps /share separate from /rest", func() {
 		raw := fetch(http.MethodGet, "/share/AbCdEfGhIjKlMnOpQrStUv", nil, nil)
 		Expect(raw.Status).To(Equal(http.StatusNotFound))
+	})
+
+	It("answers a junk short path under /share with a plain 404", func() {
+		for _, path := range []string{"/share/x", "/share/ping", "/share/a/b/c/d"} {
+			raw := fetch(http.MethodGet, path, nil, nil)
+			Expect(raw.Status).To(Equal(http.StatusNotFound), path)
+			Expect(
+				string(raw.Body),
+			).NotTo(ContainSubstring("subsonic-response"), path)
+		}
 	})
 })
 

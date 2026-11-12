@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,6 +53,10 @@ func shareInternal(what string, err error) sdk.Response {
 	sdk.Log("error", what, "error", err.Error())
 	return shareText(http.StatusInternalServerError, "internal error")
 }
+
+// shareTokenShape is what a share token looks like; anything else is a 404
+// before the database is asked.
+var shareTokenShape = regexp.MustCompile(`^[A-Za-z0-9_-]{20,}$`)
 
 // openedShare is a live share, its owner and the track ids it holds.
 type openedShare struct {
