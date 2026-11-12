@@ -103,6 +103,7 @@ type browseArtist struct {
 	sortName   string
 	genre      string
 	overview   string
+	overviewFR string
 	updated    string
 	albumCount int
 }
@@ -111,13 +112,22 @@ var browseArtistColumns = `ar.id, ar.mbid, ar.name, ar.sort_name, ar.genre,
 	ar.overview, ar.updated_at,
 	(SELECT count(DISTINCT ca.album_id) FROM streamline_album_artists ca
 		JOIN streamline_albums cal ON cal.id = ca.album_id
-		WHERE ca.artist_id = ar.id AND ` + browseListedAlbum("cal") + `)`
+		WHERE ca.artist_id = ar.id AND ` + browseListedAlbum("cal") + `),
+	ar.overview_fr`
+
+// biography is the English overview, else the French one.
+func (a browseArtist) biography() string {
+	if a.overview != "" {
+		return a.overview
+	}
+	return a.overviewFR
+}
 
 func scanBrowseArtist(r row) browseArtist {
 	return browseArtist{
 		id: r.uint(0), mbid: r.str(1), name: r.str(2), sortName: r.str(3),
 		genre: r.str(4), overview: r.str(5), updated: r.str(6),
-		albumCount: int(r.int(7)),
+		albumCount: int(r.int(7)), overviewFR: r.str(8),
 	}
 }
 
@@ -802,7 +812,7 @@ func browseArtistInfoParts(c *reqCtx) (artistInfoBase, []artistID3, error) {
 	if err != nil {
 		return artistInfoBase{}, nil, err
 	}
-	return artistInfoBase{Biography: ar.overview, MusicBrainzID: ar.mbid},
+	return artistInfoBase{Biography: ar.biography(), MusicBrainzID: ar.mbid},
 		browseArtistsOf(similar), nil
 }
 

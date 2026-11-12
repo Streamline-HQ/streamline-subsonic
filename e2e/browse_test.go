@@ -708,6 +708,15 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 				ids(list(info, "similarArtist")),
 			).To(Equal([]string{browseAr(other.ID)}))
 
+			browseCore(
+				"UPDATE artists SET overview = '', overview_fr = 'Groupe de Seattle.' WHERE id = ?",
+				band.Artist.ID,
+			)
+			info = obj(u.call("getArtistInfo2", url.Values{
+				"id": {browseAr(band.Artist.ID)},
+			}), "artistInfo2")
+			Expect(info["biography"]).To(Equal("Groupe de Seattle."))
+
 			info = obj(u.call("getArtistInfo", url.Values{
 				"id": {browseAr(band.Artist.ID)}, "count": {"0"},
 			}), "artistInfo")
