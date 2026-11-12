@@ -67,11 +67,10 @@ func getThing(c *reqCtx) sdk.Response {
 | `c.ok(b)` | answer without decorating; `nil` body is the empty response |
 | `c.respond(b)` | run the registered decorators (star, rating, play count; the marks domain registers one with `registerDecorator` from its `init`), then `ok` |
 | `c.fail(code, msg)`, `c.failErr(err)` | a failed answer (HTTP 200, as Subsonic does) |
-| `c.header(name)` | a request header, any case |
 
 A handler that streams returns the `sdk.Response` with `SendFile` or `StreamFFmpeg` directly (see the host docs); a refusal on that path is still `c.failErr(...)`.
 
-`/share`: the share domain calls `registerShare(func(r sdk.Request) sdk.Response)` from its `init`. The host gives a guest the path **relative to the mount** and not the mount, so `/rest/ping` and `/share/<token>` arrive as `/ping` and `/<token>`; `restEndpoint` in `main.go` tells them apart (a registered name, or a single segment that is not token-shaped, is `/rest`). A share token must therefore be 20 or more characters of `[A-Za-z0-9_-]`; the old server's 22-character base64 tokens are.
+`/share`: the share domain calls `registerShare(func(r sdk.Request) sdk.Response)` from its `init`. The host gives a guest the path **relative to the mount**, so `/rest/ping` and `/share/<token>` arrive as `/ping` and `/<token>`; `route` in `main.go` dispatches on `Request.Mount` (`/rest` or `/share`, empty on the `/api` and `/cards` subtrees). Anything under `/share` that is not a page, stream or cover of a well-formed token (20 or more characters of `[A-Za-z0-9_-]`, which the old server's 22-character base64 tokens are) is a plain 404. `Request.Origin` is the scheme and host the client used, worked out by the host behind its trusted proxies: build every absolute URL from it, never from `X-Forwarded-*` headers.
 
 ### Database
 
@@ -90,18 +89,18 @@ rows, err = queryIn("SELECT ... WHERE id IN ({in})", ids, lead...)  // chunks of
 
 Time: this extension's tables store `storedTime` text (`nowStored()`, `formatStored(t)`); core views hold Go-printed times. `parseTime(s)` reads both; `timestamp(t)` / `optTimestamp(t)` render a response's RFC 3339 (empty for the zero time).
 
-The host's authorizer refuses `PRAGMA` and `CREATE INDEX`. `ensureSchema` therefore versions the schema by an empty marker table (`schema_v<N>`), and a secondary index is a `UNIQUE (a, b)` that cannot fail. Foreign keys are not enforced and none are declared: delete child rows in the same `tx` as their parent.
+The host's authorizer refuses `PRAGMA`; `CREATE INDEX` is allowed. `ensureSchema` versions the schema by an empty marker table (`schema_v<N>`), and secondary indexes are ordinary `CREATE INDEX IF NOT EXISTS` statements in `schema.go`. Foreign keys are not enforced and none are declared: delete child rows in the same `tx` as their parent.
 
 ### Core views (read-only, `streamline_<name>`)
 
-`artists`, `artist_members`, `albums`, `album_artists`, `tracks`, `music_credits`, `music_files`, `genres`, `users`, `user_logins`. Columns are in `internal/db/extension_views.go` of Streamline; `music_files.path` is the absolute server path (open it with `c.req.GuestPath`, or hand it to `SendFile`/ffmpeg), `music_files.missing` is 1 for a file gone from disk, `duration` is seconds. A core id (artist, album, track) is a `uint32`; Subsonic ids are `ids.Artist(id)`, `ids.Album(id)`, `ids.Track(id)`, parsed with `ids.Parse`.
+`artists`, `artist_members`, `albums`, `album_artists`, `tracks`, `music_credits`, `music_files`, `genres`, `users`, `user_logins`. Columns are in `internal/db/extension_views.go` of Streamline; `music_files.path` is the absolute server path (open it with `c.req.GuestPath`, or hand it to `SendFile`/ffmpeg), `music_files.missing` is 1 for a file gone from disk, `duration` is seconds, `music_files.added_at` is when the file joined the library (a song's `created`). Core times are Go-printed in whatever zone they were written: parse them with `parseTime`, and compare or order them in SQL through `coreMillis(col)`, never as text. `streamline_users.locked` carries an account's lockout. A core id (artist, album, track) is a `uint32`; Subsonic ids are `ids.Artist(id)`, `ids.Album(id)`, `ids.Track(id)`, parsed with `ids.Parse`.
 
 ## The extension's tables (`schema.go`)
 
 | Table | Columns | Owner |
 |---|---|---|
 | `accounts` | `user_id` PK, `password`, `password_created_at`, `last_used_at`, `last_client`, `can_stream`, `can_download`, `can_manage_playlists`, `can_share`, `can_rate`, `can_change_password` (all default 1), `max_bit_rate` 0..320 | auth, cards, users |
-| `annotations` | `user_id`, `target_kind` (`ar`/`al`/`tr`), `target_id`, `starred_at`, `rating` 0..5, `play_count`, `played_at`; PK `(user_id, target_kind, target_id)` | marks |
+| `annotations` | `user_id`, `target_kind` (`ar`/`al`/`tr`), `target_id`, `starred_at`, `rating` 0..5, `play_count`, `played_at`, `updated_at` (every write); PK `(user_id, target_kind, target_id)` | marks |
 | `playlists` | `id`, `owner_id`, `name`, `comment`, `public`, `created_at`, `changed_at` | playlists |
 | `playlist_tracks` | `playlist_id`, `position`, `track_id`; PK `(playlist_id, position)` | playlists |
 | `play_queues` | `user_id` PK, `current_index`, `position_ms`, `changed_by`, `changed_at` | queue |
@@ -211,4 +210,4 @@ Add the specs the plan's Review Focus names for your domain: permission refusals
 
 - The old server had no JSONP: `f=jsonp` answered XML. So does this one.
 - Share tokens: see the `/share` paragraph above.
-- Not available to a guest today (reported to the integrator): the request's `Host`/scheme (the absolute URL `createShare` returns, the old `RequestOrigin`), the mount a path arrived under, a lockout state of an account, `CREATE INDEX`, `PRAGMA`.
+- Not available to a guest: `PRAGMA`.
