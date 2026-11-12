@@ -220,10 +220,6 @@ func mediaDownload(c *reqCtx) sdk.Response {
 	return mf.original(true)
 }
 
-// playlistCover answers getCoverArt for a playlist id: the playlists file
-// sets it from its init, since the grid it draws is its own.
-var playlistCover func(c *reqCtx, id uint32) sdk.Response
-
 // mediaCoverArt serves an album's cover for an album or a song, a grid of its
 // albums' covers for a playlist, and an artist's photo.
 func mediaCoverArt(c *reqCtx) sdk.Response {
@@ -248,10 +244,7 @@ func mediaCoverArt(c *reqCtx) sdk.Response {
 		}
 		return mediaPoster(c, "albums", "streamline_albums", r.uint(0))
 	case ids.KindPlaylist:
-		if playlistCover == nil {
-			return c.failErr(envelope.NotFound())
-		}
-		return playlistCover(c, id)
+		return servePlaylistCover(c, id)
 	}
 	return c.failErr(envelope.NotFound())
 }

@@ -1,4 +1,3 @@
-//nolint:unused // getCoverArt (media domain) calls servePlaylistCover for a "pl" id; drop this once it does
 package main
 
 import (

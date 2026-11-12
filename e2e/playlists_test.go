@@ -1,7 +1,12 @@
 package e2e
 
 import (
+	"bytes"
+	"image/jpeg"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -407,8 +412,57 @@ var _ = Describe("playlists", Label("e2e"), func() {
 		})
 	})
 
-	PIt("serves a mosaic for getCoverArt of a playlist id", func() {
-		// Blocked on the media domain: getCoverArt does not route a "pl" id to
-		// servePlaylistCover yet. The integration step enables it.
+	Describe("getCoverArt of a playlist id", func() {
+		var u *testUser
+
+		BeforeEach(func() { u = app.subsonicUser("plcover") })
+
+		cover := func(playlist string) rawResponse {
+			GinkgoHelper()
+			return u.get("getCoverArt", url.Values{"id": {playlist}})
+		}
+
+		It("serves the album's cover as stored for one album", func() {
+			p := createPlaylistFor(u, "One", trackRef(dawn), trackRef(noon))
+			want, err := os.ReadFile(filepath.Join(
+				app.ArtworkDir, "albums", itoa(lib.Artists[0].Albums[0].ID), "poster.jpg",
+			))
+			Expect(err).NotTo(HaveOccurred())
+
+			raw := cover(p["id"].(string))
+			Expect(raw.Status).To(Equal(http.StatusOK))
+			Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
+			Expect(raw.Body).To(Equal(want))
+		})
+
+		It("draws a grid when two albums have covers", func() {
+			second := lib.Artists[0].Albums[1]
+			app.writeCover(second.ID)
+			DeferCleanup(func() {
+				Expect(os.RemoveAll(filepath.Join(
+					app.ArtworkDir, "albums", itoa(second.ID),
+				))).To(Succeed())
+			})
+			gust := lib.track(0, 1, 0)
+			p := createPlaylistFor(u, "Two", trackRef(dawn), trackRef(gust))
+			single, err := os.ReadFile(filepath.Join(
+				app.ArtworkDir, "albums", itoa(lib.Artists[0].Albums[0].ID), "poster.jpg",
+			))
+			Expect(err).NotTo(HaveOccurred())
+
+			raw := cover(p["id"].(string))
+			Expect(raw.Status).To(Equal(http.StatusOK))
+			Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
+			Expect(raw.Body).NotTo(Equal(single))
+			_, err = jpeg.Decode(bytes.NewReader(raw.Body))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("answers 404 when no album has a cover", func() {
+			indigo := lib.track(1, 0, 0)
+			p := createPlaylistFor(u, "Bare", trackRef(indigo))
+
+			Expect(cover(p["id"].(string)).Status).To(Equal(http.StatusNotFound))
+		})
 	})
 })

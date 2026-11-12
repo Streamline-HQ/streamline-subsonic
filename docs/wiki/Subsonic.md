@@ -54,7 +54,7 @@ By default an app gets the original file, so seeking and caching work as with an
 - a **maximum bitrate** lower than the file's (common for "mobile data" settings), or
 - a **format** other than the file's: MP3, Opus or AAC.
 
-The converted stream uses the requested bitrate, between 32 and 320 kbps (MP3 defaults to 192, Opus to 128, AAC to 192 when only a format is asked for). Converted streams cannot be seeked by byte range; apps that support OpenSubsonic's `transcodeOffset` restart the stream at the right time instead. Starting at a time always converts the song, even when the app asked for the original, and when no conversion can run (no ffmpeg, or all eight slots still busy after a few seconds) the app gets an error rather than the song from its start. Transcoding needs ffmpeg (see `ffmpeg` in the [Configuration Reference](Configuration-Reference)); without it, or with `ffmpeg.enabled` off, apps always get the original file. At most eight conversions run at once; past that, apps get the original file instead of an error.
+The converted stream uses the requested bitrate, between 32 and 320 kbps (MP3 defaults to 192, Opus to 128, AAC to 192 when only a format is asked for). Converted streams cannot be seeked by byte range; apps that support OpenSubsonic's `transcodeOffset` restart the stream at the right time instead. Starting at a time always converts the song, so it needs Streamline's ffmpeg service: when none is available the app gets an error rather than the song from its start. Any other conversion that cannot run sends the original file instead. The extension is granted the `ffmpeg` service, which runs Streamline's own ffmpeg with full trust.
 
 ## Lyrics
 
@@ -67,7 +67,7 @@ Accounts are managed by an admin in Streamline's web UI (Settings → Users), ne
 - **The user name is the email** you sign in with.
 - **Changing your password from an app** changes your own Subsonic password only, never your web login password, and only if your account allows it. Nobody can change another account's password from an app, admins included.
 - **Permissions.** On a user's page in the web UI, the **Subsonic apps** card (an admin edits it for another user) has switches for what the account may do from an app: stream, download, create and edit playlists, create share links, rate, and change their own Subsonic password. Every account starts with all of them on. They never limit the web UI, and browsing, searching, starring and scrobbling are always allowed.
-- **Maximum bitrate.** The same card caps the account's streams (64 to 320 kbps, or no limit). Every stream above the cap is converted, even when the app asks for the original file. The cap needs ffmpeg: without it, or when the eight conversion slots are busy, the original file is sent.
+- **Maximum bitrate.** The same card caps the account's streams (64 to 320 kbps, or no limit). Every stream above the cap is converted, even when the app asks for the original file. The cap needs Streamline's ffmpeg: without it the original file is sent.
 
 ## Library scan
 

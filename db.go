@@ -35,8 +35,6 @@ func (r row) uint(i int) uint32 {
 
 func (r row) bool(i int) bool { return r.int(i) != 0 }
 
-func (r row) null(i int) bool { return r[i] == nil }
-
 // time reads a stored or core timestamp; the zero time for NULL or text that
 // is not one.
 func (r row) time(i int) time.Time { return parseTime(r.str(i)) }

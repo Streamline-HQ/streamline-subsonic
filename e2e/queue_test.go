@@ -10,8 +10,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func trackRef(t seededTrack) string { return "tr-" + itoa(t.ID) }
-
 var _ = Describe("bookmarks", Label("e2e"), func() {
 	var (
 		u        *testUser
