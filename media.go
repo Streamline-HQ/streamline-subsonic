@@ -240,10 +240,14 @@ func mediaPoster(c *reqCtx, kind, table string, id uint32) sdk.Response {
 	if !ok {
 		return notFoundResponse()
 	}
-	return sdk.Response{SendFile: &sdk.SendFile{
-		Path:        path.Join(folder.HostPath, rel),
-		ContentType: contentType,
-	}}
+	return sdk.Response{
+		// Private: the request URL carries the caller's credentials.
+		Headers: map[string][]string{"Cache-Control": {"private, max-age=86400"}},
+		SendFile: &sdk.SendFile{
+			Path:        path.Join(folder.HostPath, rel),
+			ContentType: contentType,
+		},
+	}
 }
 
 // posterContentType sniffs the cached cover at guestPath. The file is always

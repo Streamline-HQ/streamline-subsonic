@@ -327,6 +327,8 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 		raw := u.get("getCoverArt", url.Values{"id": {"al-" + itoa(album.ID)}})
 		Expect(raw.Status).To(Equal(http.StatusOK))
 		Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
+		Expect(raw.Header.Get("Cache-Control")).
+			To(Equal("private, max-age=86400"))
 		Expect(raw.Body).To(Equal(want))
 	})
 
