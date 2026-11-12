@@ -7,9 +7,7 @@ import "strconv"
 // that finds no marker for this version runs them all again.
 const schemaVersion = 1
 
-// The extension's own tables. The host refuses CREATE INDEX (SQLite asks the
-// authorizer for a REINDEX it does not allow), so a secondary index is a
-// UNIQUE constraint that is trivially satisfied, such as (owner_id, id).
+// The extension's own tables and their indexes.
 //
 // A user id is Streamline's (streamline_users.id),
 // a track, album or artist id is the row id of the core view, and times are
@@ -47,9 +45,10 @@ var schema = []string{
 		rating INTEGER NOT NULL DEFAULT 0 CHECK (rating BETWEEN 0 AND 5),
 		play_count INTEGER NOT NULL DEFAULT 0,
 		played_at TEXT,
-		PRIMARY KEY (user_id, target_kind, target_id),
-		UNIQUE (target_kind, target_id, user_id)
+		PRIMARY KEY (user_id, target_kind, target_id)
 	) WITHOUT ROWID`,
+	`CREATE INDEX IF NOT EXISTS annotations_target
+		ON annotations(target_kind, target_id, user_id)`,
 
 	`CREATE TABLE IF NOT EXISTS playlists(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,9 +57,9 @@ var schema = []string{
 		comment TEXT NOT NULL DEFAULT '',
 		public INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT NOT NULL,
-		changed_at TEXT NOT NULL,
-		UNIQUE (owner_id, id)
+		changed_at TEXT NOT NULL
 	)`,
+	`CREATE INDEX IF NOT EXISTS playlists_owner ON playlists(owner_id, id)`,
 	// A playlist's entries in order, a track twice allowed; a track whose
 	// file is gone is skipped on read, not chased on delete.
 	`CREATE TABLE IF NOT EXISTS playlist_tracks(
@@ -107,9 +106,9 @@ var schema = []string{
 		expires_at TEXT,
 		last_visited_at TEXT,
 		visit_count INTEGER NOT NULL DEFAULT 0,
-		created_at TEXT NOT NULL,
-		UNIQUE (owner_id, id)
+		created_at TEXT NOT NULL
 	)`,
+	`CREATE INDEX IF NOT EXISTS shares_owner ON shares(owner_id, id)`,
 	// The Subsonic ids the share was created from (tracks, albums, a
 	// playlist, an artist), expanded when the link is opened.
 	`CREATE TABLE IF NOT EXISTS share_entries(

@@ -69,6 +69,27 @@ var _ = Describe("the extension", Label("e2e"), func() {
 			"music_credits", "music_files", "genres", "users", "user_logins",
 		))
 	})
+
+	It("creates its secondary indexes", func() {
+		app.subsonicUser("indexes").call("ping", nil)
+		db := app.ext()
+		defer db.Close()
+		rows, err := db.Query(
+			"SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'",
+		)
+		Expect(err).NotTo(HaveOccurred())
+		defer rows.Close()
+		var names []string
+		for rows.Next() {
+			var n string
+			Expect(rows.Scan(&n)).To(Succeed())
+			names = append(names, n)
+		}
+		Expect(rows.Err()).NotTo(HaveOccurred())
+		Expect(names).To(ContainElements(
+			"annotations_target", "playlists_owner", "shares_owner",
+		))
+	})
 })
 
 var _ = Describe("system endpoints", Label("e2e"), func() {
