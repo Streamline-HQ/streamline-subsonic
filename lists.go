@@ -51,10 +51,10 @@ func listsAlbums(c *reqCtx) ([]browseAlbum, error) {
 	case "random":
 		q.order = "RANDOM()"
 	case "newest":
-		// A file's id grows with its arrival, which is what counts: an album
-		// row is created with its artist's whole discography, so its own
-		// creation time says nothing about when its music arrived.
-		q.order = `(SELECT max(nf.id) FROM streamline_music_files nf
+		// An album row is created with its artist's whole discography, so its
+		// own creation time says nothing about when its music arrived.
+		q.order = `(SELECT max(` + coreMillis("nf.added_at") + `)
+			FROM streamline_music_files nf
 			JOIN streamline_tracks nt ON nt.id = nf.track_id
 			WHERE nt.album_id = al.id AND nf.missing = 0) DESC, al.id DESC`
 	case "alphabeticalByArtist":

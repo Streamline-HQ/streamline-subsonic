@@ -36,7 +36,7 @@ func queueClamp[T uint8 | uint16 | uint32](n int64) T {
 // file on disk; the others are absent from the result.
 func queueSongs(trackIDs []uint32) (map[uint32]child, error) {
 	rows, err := queryIn(`SELECT t.id, t.mbid, t.title, t.disc, t.position,
-			t.duration, t.artist_credit, t.added_at,
+			t.duration, t.artist_credit, f.added_at,
 			al.id, al.title, al.release_date,
 			ar.id, ar.name, ar.genre,
 			f.path, f.format, f.size, f.duration, f.bitrate

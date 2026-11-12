@@ -26,7 +26,7 @@ func playlistSongs(trackIDs []uint32) (map[uint32]child, error) {
 	slices.Sort(uniq)
 	uniq = slices.Compact(uniq)
 	rows, err := queryIn(`SELECT t.id, t.mbid, t.title, t.disc, t.position,
-			t.duration, t.artist_credit, t.added_at,
+			t.duration, t.artist_credit, mf.added_at,
 			al.id, al.title, al.release_date,
 			ar.id, ar.name, ar.genre,
 			mf.path, mf.format, mf.size, mf.duration, mf.bitrate

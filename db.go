@@ -166,3 +166,19 @@ func parseTime(s string) time.Time {
 	}
 	return time.Time{}
 }
+
+// coreMillis is an SQL expression for a core time column, which holds a time
+// as Go prints one ("2006-01-02 15:04:05.999999999 -0700 MST", in whatever
+// zone it was written), as Unix milliseconds. The abbreviation after the
+// offset is ignored, and a value with no offset reads as UTC.
+func coreMillis(col string) string {
+	rest := "substr(" + col + ", 20)"
+	pos := "(19 + instr(" + rest + ", ' '))"
+	offset := "CASE WHEN instr(" + rest + ", ' ') = 0 THEN '+00:00' ELSE " +
+		"(CASE substr(" + col + ", " + pos + " + 1, 1) WHEN '-' THEN '+' ELSE '-' END)" +
+		" || substr(" + col + ", " + pos + " + 2, 2) || ':' || substr(" + col + ", " + pos + " + 4, 2) END"
+	fraction := "CASE WHEN substr(" + col + ", 20, 1) = '.' THEN " +
+		"CAST('0' || substr(" + col + ", 20, instr(" + rest + " || ' ', ' ') - 1) AS REAL) ELSE 0 END"
+	return "((CAST(strftime('%s', substr(" + col + ", 1, 19), " + offset +
+		") AS INTEGER) + " + fraction + ") * 1000)"
+}

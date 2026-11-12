@@ -304,7 +304,7 @@ type browseSongQuery struct {
 
 // The first file a track still has on disk is the one a client is offered.
 const browseSongSQL = `SELECT t.id, t.mbid, t.title, t.disc, t.position, t.duration,
-	t.artist_credit, t.added_at,
+	t.artist_credit, f.added_at,
 	al.id, al.title, al.release_date,
 	ar.id, ar.name, ar.genre,
 	f.path, f.size, f.format, f.duration, f.bitrate

@@ -51,12 +51,11 @@ func marksKbps(bitrate, size int64, duration uint32) uint32 {
 }
 
 // marksSongs renders the playable tracks among trackIDs as songs, keyed by
-// track id; a track with no file on disk is absent. A file's creation time is
-// not in the music_files view, so Created is the track's own.
+// track id; a track with no file on disk is absent.
 func marksSongs(trackIDs []uint32) (map[uint32]child, error) {
 	rows, err := queryIn(
 		`SELECT t.id, t.mbid, t.title, t.disc, t.position, t.duration,
-			t.artist_credit, t.added_at,
+			t.artist_credit, f.added_at,
 			a.id, a.title, a.release_date,
 			ar.id, ar.name, ar.genre,
 			f.path, f.format, f.size, f.duration, f.bitrate

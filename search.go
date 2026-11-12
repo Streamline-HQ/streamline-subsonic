@@ -151,8 +151,10 @@ func searchLegacy(c *reqCtx) sdk.Response {
 		args = append(args, p, p, p)
 	}
 	if since, ok := c.millisParam("newerThan"); ok {
-		where += " AND substr(t.added_at, 1, 19) > ?"
-		args = append(args, since.UTC().Format("2006-01-02 15:04:05"))
+		where += " AND EXISTS (SELECT 1 FROM streamline_music_files nf" +
+			" WHERE nf.track_id = t.id AND nf.missing = 0 AND " +
+			coreMillis("nf.added_at") + " > ?)"
+		args = append(args, since.UnixMilli())
 	}
 	total, err := browseSongCountOf(where, args)
 	if err != nil {

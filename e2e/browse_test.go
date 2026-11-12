@@ -911,6 +911,35 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			Expect(res["totalHits"]).To(BeEquivalentTo(1))
 		})
 
+		It("reads a file's added time in the zone the core wrote it", func() {
+			added := time.Date(
+				2020,
+				3,
+				4,
+				12,
+				0,
+				0,
+				0,
+				time.FixedZone("CEST", 2*3600),
+			)
+			Expect(added.String()).To(Equal("2020-03-04 12:00:00 +0200 CEST"))
+			browseCore("UPDATE media_files SET create_time = ? WHERE id = ?",
+				added.String(), band.WithFile.FileID)
+
+			song := obj(u.call("getSong",
+				url.Values{"id": {browseTr(band.WithFile.ID)}}), "song")
+			Expect(song["created"]).To(Equal("2020-03-04T10:00:00Z"))
+
+			since := func(t time.Time) any {
+				return obj(u.call("search", url.Values{
+					"artist": {band.Name}, "newerThan": {fmt.Sprint(t.UnixMilli())},
+				}), "searchResult")["totalHits"]
+			}
+			utc := added.UTC()
+			Expect(since(utc.Add(-time.Minute))).To(BeEquivalentTo(1))
+			Expect(since(utc.Add(time.Minute))).To(BeEquivalentTo(0))
+		})
+
 		It("pages a search past 100 hits", func() {
 			prefix := app.unique("Bulk Band")
 			now := coreTime(time.Now())

@@ -274,7 +274,7 @@ func shareSongs(want []uint32) ([]shareTrack, error) {
 		`SELECT t.id, t.mbid, t.album_id, t.title, t.disc, t.position,
 			t.duration, t.artist_credit,
 			al.title, al.release_date, ar.id, ar.name, ar.genre,
-			f.path, f.format, f.size, f.duration, f.bitrate, t.added_at
+			f.path, f.format, f.size, f.duration, f.bitrate, f.added_at
 		FROM streamline_tracks t
 		JOIN streamline_albums al ON al.id = t.album_id
 		JOIN streamline_artists ar ON ar.id = al.artist_id
