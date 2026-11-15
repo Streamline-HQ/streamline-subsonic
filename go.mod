@@ -3,7 +3,7 @@ module github.com/streamline-hq/streamline-subsonic
 go 1.27.3
 
 require (
-	github.com/datahearth/streamline/extensions/sdk v0.0.0-20261115205940-03c019f023a6
+	github.com/datahearth/streamline/extensions/sdk v0.0.0-20261115214506-25f633117c00
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 )
