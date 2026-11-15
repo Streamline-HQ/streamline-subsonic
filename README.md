@@ -21,7 +21,7 @@ STREAMLINE_BIN=/path/to/streamline task test:e2e
 
 Contributors: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-The extension SDK lives in the Streamline repository (`extensions/sdk`) and has no published version yet, so `go.mod` replaces it with a checkout of Streamline beside this one (`../streamline`).
+The extension SDK is the `github.com/datahearth/streamline/extensions/sdk` module, in the Streamline repository. It has no tagged release yet, so `go.mod` pins it to a commit (a pseudo-version); move it with `go get github.com/datahearth/streamline/extensions/sdk@<commit>`. To build against a local Streamline checkout instead, add it to your own `go.work` with `go work use ../streamline/extensions/sdk`, and keep that out of the commit.
 
 ## License
 

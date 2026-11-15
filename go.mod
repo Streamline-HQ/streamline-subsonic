@@ -3,7 +3,7 @@ module github.com/streamline-hq/streamline-subsonic
 go 1.27.3
 
 require (
-	github.com/datahearth/streamline/extensions/sdk v0.0.0
+	github.com/datahearth/streamline/extensions/sdk v0.0.0-20261115205940-03c019f023a6
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 )
@@ -226,8 +226,6 @@ require (
 	mvdan.cc/gofumpt v0.12.0 // indirect
 	mvdan.cc/unparam v0.0.0-20260823230713-2fa3d841b0c8 // indirect
 )
-
-replace github.com/datahearth/streamline/extensions/sdk => ../streamline/extensions/sdk
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
