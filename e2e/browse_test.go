@@ -390,6 +390,26 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			},
 		)
 
+		It("reports a lossless file's bit depth and sampling rate", func() {
+			browseCore(
+				"UPDATE media_files SET bit_depth = 24, sample_rate = 96000 WHERE id = ?",
+				band.WithFile.FileID,
+			)
+			got := obj(u.call("getSong",
+				url.Values{"id": {browseTr(band.WithFile.ID)}}), "song")
+			Expect(got["bitDepth"]).To(BeEquivalentTo(24))
+			Expect(got["samplingRate"]).To(BeEquivalentTo(96000))
+
+			browseCore(
+				"UPDATE media_files SET bit_depth = 0, sample_rate = 0 WHERE id = ?",
+				band.WithFile.FileID,
+			)
+			got = obj(u.call("getSong",
+				url.Values{"id": {browseTr(band.WithFile.ID)}}), "song")
+			Expect(got).NotTo(HaveKey("bitDepth"))
+			Expect(got).NotTo(HaveKey("samplingRate"))
+		})
+
 		It("answers getSong, and 70 for a track with no file", func() {
 			got := obj(u.call("getSong",
 				url.Values{"id": {browseTr(band.WithFile.ID)}}), "song")

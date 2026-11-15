@@ -62,7 +62,7 @@ const songSQL = `SELECT t.id, t.mbid, t.title, t.disc, t.position, t.duration,
 	t.artist_credit, f.added_at,
 	al.id, al.title, al.release_date,
 	ar.id, ar.name, ar.genre,
-	f.path, f.size, f.format, f.duration, f.bitrate
+	f.path, f.size, f.format, f.duration, f.bitrate, f.bit_depth, f.sample_rate
 FROM streamline_tracks t
 JOIN streamline_albums al ON al.id = t.album_id
 JOIN streamline_artists ar ON ar.id = al.artist_id
@@ -136,6 +136,8 @@ func songsOfRows(rows []row) ([]song, error) {
 			Suffix:        suffix,
 			Duration:      duration,
 			BitRate:       songKbps(r.int(18), size, duration),
+			BitDepth:      uint8(min(r.uint(19), math.MaxUint8)),
+			SamplingRate:  r.uint(20),
 			Created:       timestamp(r.time(7)),
 			AlbumID:       ids.Album(albumID),
 			ArtistID:      ids.Artist(r.uint(11)),

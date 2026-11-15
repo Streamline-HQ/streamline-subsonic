@@ -70,6 +70,8 @@ type child struct {
 	Suffix        string `xml:"suffix,attr,omitempty"        json:"suffix,omitempty"`
 	Duration      uint32 `xml:"duration,attr"                json:"duration"`
 	BitRate       uint32 `xml:"bitRate,attr,omitempty"       json:"bitRate,omitempty"`
+	BitDepth      uint8  `xml:"bitDepth,attr,omitempty"      json:"bitDepth,omitempty"`
+	SamplingRate  uint32 `xml:"samplingRate,attr,omitempty"  json:"samplingRate,omitempty"`
 	Created       string `xml:"created,attr,omitempty"       json:"created,omitempty"`
 	Starred       string `xml:"starred,attr,omitempty"       json:"starred,omitempty"`
 	UserRating    uint8  `xml:"userRating,attr,omitempty"    json:"userRating,omitempty"`
