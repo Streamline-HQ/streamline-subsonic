@@ -70,7 +70,7 @@ var _ = Describe("stream and download", Label("e2e"), func() {
 		It("answers a range request with 206", func() {
 			t := lib.track(0, 0, 0)
 			q := u.signed(url.Values{"id": {trackID(t)}})
-			raw := fetch(http.MethodGet, "/rest/stream?"+q.Encode(), nil,
+			raw := fetch(http.MethodGet, mountBase+"/rest/stream?"+q.Encode(), nil,
 				http.Header{"Range": {"bytes=0-3"}})
 			Expect(raw.Status).To(Equal(http.StatusPartialContent))
 			Expect(raw.Body).To(Equal(bin(t)[:4]))

@@ -323,7 +323,9 @@ func (i *instance) extension() map[string]any {
 // that write to its database need.
 func (i *instance) touchExtension() {
 	GinkgoHelper()
-	resp, err := httpClient.Get(i.BaseURL + "/rest/getOpenSubsonicExtensions?f=json")
+	resp, err := httpClient.Get(
+		i.BaseURL + mountBase + "/rest/getOpenSubsonicExtensions?f=json",
+	)
 	Expect(err).NotTo(HaveOccurred())
 	defer resp.Body.Close()
 	Expect(resp.StatusCode).To(Equal(http.StatusOK))

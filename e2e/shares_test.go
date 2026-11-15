@@ -37,13 +37,13 @@ var _ = Describe("shares", Label("e2e"), func() {
 		Expect(ok).To(BeTrue())
 		u, err := url.Parse(link)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(u.Path).To(HavePrefix("/share/"))
-		return strings.TrimPrefix(u.Path, "/share/")
+		Expect(u.Path).To(HavePrefix(mountBase + "/share/"))
+		return strings.TrimPrefix(u.Path, mountBase+"/share/")
 	}
 
 	visit := func(path string) rawResponse {
 		GinkgoHelper()
-		return fetch(http.MethodGet, "/share/"+path, nil, nil)
+		return fetch(http.MethodGet, mountBase+"/share/"+path, nil, nil)
 	}
 
 	titles := func(items []map[string]any) []string {
@@ -109,7 +109,7 @@ var _ = Describe("shares", Label("e2e"), func() {
 			"id": {"al-" + itoa(album.ID)}, "description": {"Listen to this"},
 		})
 		Expect(s["id"]).To(HavePrefix("sh-"))
-		Expect(s["url"]).To(HaveSuffix("/share/" + tokenOf(s)))
+		Expect(s["url"]).To(HaveSuffix(mountBase + "/share/" + tokenOf(s)))
 		Expect(s["username"]).To(Equal(owner.Email))
 		Expect(s["description"]).To(Equal("Listen to this"))
 		Expect(titles(list(s, "entry"))).To(Equal([]string{"Dawn", "Noon", "Dusk"}))
@@ -127,6 +127,11 @@ var _ = Describe("shares", Label("e2e"), func() {
 		Expect(html).NotTo(ContainSubstring("<script"))
 
 		first := album.Tracks[0]
+		Expect(html).To(ContainSubstring(
+			`src="` + mountBase + "/share/" + token + "/stream/" + itoa(
+				first.ID,
+			) + `"`,
+		))
 		want, err := os.ReadFile(first.Path)
 		Expect(err).NotTo(HaveOccurred())
 		audio := visit(token + "/stream/" + itoa(first.ID))
@@ -187,14 +192,14 @@ var _ = Describe("shares", Label("e2e"), func() {
 		s := createShare(owner, url.Values{
 			"id": {"al-" + itoa(lib.Artists[0].Albums[0].ID)},
 		})
-		Expect(s["url"]).To(HavePrefix(app.BaseURL + "/share/"))
+		Expect(s["url"]).To(HavePrefix(app.BaseURL + mountBase + "/share/"))
 	})
 
 	It("ignores forwarding headers from a client the host does not trust", func() {
 		q := owner.signed(url.Values{"id": {"tr-" + itoa(lib.track(0, 0, 0).ID)}})
 		raw := fetch(
 			http.MethodGet,
-			"/rest/createShare?"+q.Encode(),
+			mountBase+"/rest/createShare?"+q.Encode(),
 			nil,
 			http.Header{
 				"X-Forwarded-Host":  {"evil.example.com"},
@@ -203,7 +208,7 @@ var _ = Describe("shares", Label("e2e"), func() {
 		)
 		got := list(obj(raw.json(), "shares"), "share")
 		Expect(got).To(HaveLen(1))
-		Expect(got[0]["url"]).To(HavePrefix(app.BaseURL + "/share/"))
+		Expect(got[0]["url"]).To(HavePrefix(app.BaseURL + mountBase + "/share/"))
 	})
 
 	It("expands an artist and a playlist and a track in the order shared", func() {

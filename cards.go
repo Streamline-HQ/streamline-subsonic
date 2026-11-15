@@ -25,10 +25,11 @@ const (
 func accountCards() []sdk.AccountCard {
 	return []sdk.AccountCard{
 		{
-			ID:       cardCredential,
-			Kind:     sdk.CardCredential,
-			Title:    "Subsonic",
-			Mount:    "/rest",
+			ID:    cardCredential,
+			Kind:  sdk.CardCredential,
+			Title: "Subsonic",
+			// The extension's own path: an app adds /rest to it itself.
+			Mount:    "/",
 			Username: "email",
 		},
 		{

@@ -185,7 +185,7 @@ var _ = Describe("system endpoints", Label("e2e"), func() {
 	})
 
 	It("answers a malformed query with error 0", func() {
-		raw := fetch(http.MethodGet, "/rest/ping?u=%zz&f=json", nil, nil)
+		raw := fetch(http.MethodGet, mountBase+"/rest/ping?u=%zz&f=json", nil, nil)
 		Expect(raw.Status).To(Equal(http.StatusOK))
 		Expect(string(raw.Body)).To(ContainSubstring(
 			`<error code="0" message="Malformed request">`,
@@ -193,12 +193,17 @@ var _ = Describe("system endpoints", Label("e2e"), func() {
 	})
 
 	It("keeps /share separate from /rest", func() {
-		raw := fetch(http.MethodGet, "/share/AbCdEfGhIjKlMnOpQrStUv", nil, nil)
+		raw := fetch(
+			http.MethodGet,
+			mountBase+"/share/AbCdEfGhIjKlMnOpQrStUv",
+			nil,
+			nil,
+		)
 		Expect(raw.Status).To(Equal(http.StatusNotFound))
 	})
 
 	It("answers a junk short path under /share with a plain 404", func() {
-		for _, path := range []string{"/share/x", "/share/ping", "/share/a/b/c/d"} {
+		for _, path := range []string{mountBase + "/share/x", mountBase + "/share/ping", mountBase + "/share/a/b/c/d"} {
 			raw := fetch(http.MethodGet, path, nil, nil)
 			Expect(raw.Status).To(Equal(http.StatusNotFound), path)
 			Expect(
@@ -313,6 +318,18 @@ var _ = Describe("authentication", Label("e2e"), func() {
 })
 
 var _ = Describe("the credential card", Label("e2e"), func() {
+	It("gives the address an app is pointed at, which it adds /rest to", func() {
+		cards := app.apiList(
+			http.MethodGet,
+			"/api/v1/account/extensions",
+			http.StatusOK,
+		)
+		Expect(cards).To(ContainElement(SatisfyAll(
+			HaveKeyWithValue("extension", extensionName),
+			HaveKeyWithValue("mount", mountBase),
+		)))
+	})
+
 	It("sets, uses and revokes a Subsonic password", func() {
 		u := app.newUser("card")
 		session := app.login(u.Email, "e2e-Login-Passw0rd!")

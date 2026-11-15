@@ -222,7 +222,7 @@ func toShareInfo(c *reqCtx, s *share, ts []song) shareInfo {
 	}
 	return shareInfo{
 		ID:          ids.Share(s.ID),
-		URL:         c.req.Origin + "/share/" + s.Token,
+		URL:         c.req.Origin + c.req.BasePath + "/share/" + s.Token,
 		Description: s.Description,
 		Username:    c.user.Email,
 		Created:     optTimestamp(s.Created),

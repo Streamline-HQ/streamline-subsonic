@@ -241,8 +241,11 @@ type sharePageData struct {
 	Owner       string
 	Expires     string
 	CoverAlbum  uint32
-	Token       string
-	Tracks      []sharePageTrack
+	// Base is where the extension is served, which every link on the page
+	// starts with.
+	Base   string
+	Token  string
+	Tracks []sharePageTrack
 }
 
 func shareClock(sec uint32) string {
@@ -296,6 +299,7 @@ func sharePage(req sdk.Request, token string) sdk.Response {
 		Title:       shareTitle(s.Description, ts),
 		Description: s.Description,
 		Owner:       s.owner.DisplayName,
+		Base:        req.BasePath,
 		Token:       s.Token,
 		Tracks:      make([]sharePageTrack, 0, len(ts)),
 	}
@@ -363,7 +367,7 @@ footer { margin-top: 32px; color: var(--muted); font-size: .8rem; text-align: ce
 <body>
 <main>
 <header>
-{{if .CoverAlbum}}<img src="/share/{{.Token}}/cover/{{.CoverAlbum}}" alt="">{{end}}
+{{if .CoverAlbum}}<img src="{{.Base}}/share/{{.Token}}/cover/{{.CoverAlbum}}" alt="">{{end}}
 <div>
 <h1>{{.Title}}</h1>
 <div class="meta">{{len .Tracks}} track{{if ne (len .Tracks) 1}}s{{end}}{{if .Owner}} · shared by {{.Owner}}{{end}}{{if .Expires}} · until {{.Expires}}{{end}}</div>
@@ -372,7 +376,7 @@ footer { margin-top: 32px; color: var(--muted); font-size: .8rem; text-align: ce
 {{if .Tracks}}<ol>
 {{range .Tracks}}<li>
 <div class="row"><div><div class="title">{{.Title}}</div><div class="sub">{{.Artist}} — {{.Album}}</div></div><div class="dur">{{.Duration}}</div></div>
-<audio controls preload="none" src="/share/{{$.Token}}/stream/{{.ID}}"></audio>
+<audio controls preload="none" src="{{$.Base}}/share/{{$.Token}}/stream/{{.ID}}"></audio>
 </li>
 {{end}}</ol>{{else}}<p class="meta">Nothing in this share can be played right now.</p>{{end}}
 <footer>Shared from Streamline</footer>

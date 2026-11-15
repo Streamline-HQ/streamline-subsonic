@@ -9,6 +9,9 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// mountBase is where Streamline serves the extension.
+const mountBase = "/extensions/subsonic"
+
 var _ = Describe("the harness", Label("e2e"), func() {
 	It("seeds a library with real audio, a poster and a track with no file", func() {
 		lib := app.sharedLibrary()

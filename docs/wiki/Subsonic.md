@@ -1,6 +1,6 @@
 # Subsonic
 
-The **Subsonic extension** ([streamline-subsonic](https://github.com/streamline-hq/streamline-subsonic), installed from Settings → Extensions, see [Extensions](Extensions)) speaks the Subsonic API (version 1.16.1) at `/rest`, plus the OpenSubsonic extensions most modern apps look for. Point any Subsonic app at your Streamline address (`https://your-host`, the app adds `/rest` itself) and sign in with your **email** as the user name and your **Subsonic password** as the password. Generate that password on the Account page (the **Subsonic** card, shown once the extension runs); it is separate from your login password and never works for the web UI.
+The **Subsonic extension** ([streamline-subsonic](https://github.com/streamline-hq/streamline-subsonic), installed from Settings → Extensions, see [Extensions](Extensions)) speaks the Subsonic API (version 1.16.1) at `/extensions/subsonic/rest`, plus the OpenSubsonic extensions most modern apps look for. Point any Subsonic app at `https://your-host/extensions/subsonic` (the app adds `/rest` itself; in apps that offer several server types, such as Feishin, pick Subsonic or OpenSubsonic, not Navidrome) and sign in with your **email** as the user name and your **Subsonic password** as the password. Generate that password on the Account page (the **Subsonic** card, shown once the extension runs); it is separate from your login password and never works for the web UI.
 
 Apps such as Symfonium, DSub, Ultrasonic, Tempo, play:Sub, Feishin and Sublime Music speak this API.
 
@@ -43,7 +43,7 @@ A playlist is private to you unless you make it public. Public playlists show up
 
 ## Sharing
 
-Sharing creates a link like `https://your-host/share/AbCdEf…` that anyone can open without an account. The page lists the shared songs with a player for each one and the album cover. It shows your display name, never your email. A link to an album or artist always plays what is in the library when it is opened, so an album shared before all its tracks arrived includes them later.
+Sharing creates a link like `https://your-host/extensions/subsonic/share/AbCdEf…` that anyone can open without an account. The page lists the shared songs with a player for each one and the album cover. It shows your display name, never your email. A link to an album or artist always plays what is in the library when it is opened, so an album shared before all its tracks arrived includes them later.
 
 - The link is the only protection, so share it the way you would share a file.
 - A link with an expiry date stops working on that date; deleting the share stops it at once.

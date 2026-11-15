@@ -14,7 +14,7 @@ import (
 
 // version is the manifest's version and the serverVersion every response
 // carries.
-const version = "1.0.0"
+const version = "2.0.0"
 
 // main is never run in a reactor module. It names the two exports only so the
 // unused linter sees them as entry points; nothing else calls them.
@@ -25,7 +25,7 @@ func manifest() int32 {
 	return sdk.WriteManifest(sdk.Manifest{
 		Name:          "subsonic",
 		Version:       version,
-		StreamlineAPI: 1,
+		StreamlineAPI: sdk.APIVersion,
 		Mounts: []sdk.Mount{
 			{Prefix: "/rest", Auth: "self"},
 			{Prefix: "/share", Auth: "self"},

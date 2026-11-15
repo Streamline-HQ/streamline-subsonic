@@ -91,7 +91,7 @@ func (u *testUser) client() *subsonic.Client {
 	Expect(u.Password).NotTo(BeEmpty(), "%s has no Subsonic password", u.Email)
 	c := &subsonic.Client{
 		Client:     httpClient,
-		BaseUrl:    app.BaseURL,
+		BaseUrl:    app.BaseURL + mountBase,
 		User:       u.Email,
 		ClientName: "e2e",
 	}
@@ -127,7 +127,12 @@ type rawResponse struct {
 // rest sends GET /rest/<endpoint> with q as given, signing nothing.
 func rest(endpoint string, q url.Values) rawResponse {
 	GinkgoHelper()
-	return fetch(http.MethodGet, "/rest/"+endpoint+"?"+q.Encode(), nil, nil)
+	return fetch(
+		http.MethodGet,
+		mountBase+"/rest/"+endpoint+"?"+q.Encode(),
+		nil,
+		nil,
+	)
 }
 
 // get sends GET /rest/<endpoint> signed as u; extra overrides the signed
@@ -142,7 +147,7 @@ func (u *testUser) postForm(endpoint string, extra url.Values) rawResponse {
 	GinkgoHelper()
 	return fetch(
 		http.MethodPost,
-		"/rest/"+endpoint,
+		mountBase+"/rest/"+endpoint,
 		[]byte(u.signed(extra).Encode()),
 		http.Header{"Content-Type": {"application/x-www-form-urlencoded"}},
 	)

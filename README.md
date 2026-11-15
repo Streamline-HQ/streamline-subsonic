@@ -1,8 +1,10 @@
 # streamline-subsonic
 
-Subsonic 1.16.1 / OpenSubsonic server for [Streamline](https://github.com/DataHearth/streamline), as an extension: a WebAssembly module the server loads, mounted at `/rest`, with public share pages at `/share`. It reads the library through the views Streamline grants it and keeps everything else (passwords, permissions, stars, ratings, playlists, play queues, bookmarks, shares, radio stations) in its own database.
+Subsonic 1.16.1 / OpenSubsonic server for [Streamline](https://github.com/DataHearth/streamline), as an extension: a WebAssembly module the server loads, served at `/extensions/subsonic`: the API under `/rest` (point apps at `https://your-host/extensions/subsonic`), public share pages under `/share`. It reads the library through the views Streamline grants it and keeps everything else (passwords, permissions, stars, ratings, playlists, play queues, bookmarks, shares, radio stations) in its own database.
 
 ## Install
+
+Version 2 needs a Streamline that serves extensions at `/extensions/<name>` (extension contract version 2); version 1 ran on the release before it, at `/rest` and `/share`.
 
 In Streamline, Settings → Extensions → Add: give it the URL of `subsonic.wasm` from a release of this repository and its SHA-256 (`subsonic.wasm.sha256`), then review what it asks for. See the [Extensions](https://github.com/DataHearth/streamline/wiki/Extensions) wiki page.
 
