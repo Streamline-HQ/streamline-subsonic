@@ -1,0 +1,44 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "The extension version (the release you installed) and `streamline --version`."
+      placeholder: 2.0.0 on Streamline 3.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Subsonic app
+      description: Which app and version, on which device.
+      placeholder: Symfonium 13.4 on Android
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Streamline's log around the request (ideally with `log.app.level: debug`), or the app's own log. Redact passwords, tokens and salts.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: >
+        The request the app sends (endpoint and parameters), screenshots, what another Subsonic server answers to the same request.
