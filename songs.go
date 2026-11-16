@@ -9,13 +9,36 @@ import (
 	"github.com/streamline-hq/streamline-subsonic/ids"
 )
 
+// songContentTypes types a song by its suffix, for its listing and for the
+// original file a stream or download sends. An .m4a is audio/mp4 whether it
+// holds AAC or ALAC.
 var songContentTypes = map[string]string{
 	"flac": "audio/flac",
 	"mp3":  "audio/mpeg",
 	"m4a":  "audio/mp4",
+	"m4b":  "audio/mp4",
+	"mp4":  "audio/mp4",
+	"alac": "audio/mp4",
 	"ogg":  "audio/ogg",
+	"oga":  "audio/ogg",
 	"opus": "audio/opus",
 	"aac":  "audio/aac",
+	"wav":  "audio/wav",
+	"aif":  "audio/aiff",
+	"aiff": "audio/aiff",
+	"aifc": "audio/aiff",
+	"wv":   "audio/x-wavpack",
+	"ape":  "audio/x-ape",
+	"wma":  "audio/x-ms-wma",
+	"dsf":  "audio/x-dsf",
+	"dff":  "audio/x-dff",
+	"mka":  "audio/x-matroska",
+	"mpc":  "audio/x-musepack",
+	"webm": "audio/webm",
+	"spx":  "audio/ogg",
+	"mp2":  "audio/mpeg",
+	"ac3":  "audio/ac3",
+	"tta":  "audio/x-tta",
 }
 
 func songContentType(suffix string) string {

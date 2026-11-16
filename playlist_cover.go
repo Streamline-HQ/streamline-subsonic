@@ -50,7 +50,7 @@ func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 	}
 	cached, cachePath := playlistCachedCover(c, covers)
 	if cached != nil {
-		return jpegResponse(cached)
+		return coverBytes(c, "image/jpeg", cached)
 	}
 
 	var squares []image.Image
@@ -82,7 +82,7 @@ func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 	if cachePath != "" {
 		playlistStoreCover(cachePath, grid)
 	}
-	return jpegResponse(grid)
+	return coverBytes(c, "image/jpeg", grid)
 }
 
 type playlistCoverFile struct {
@@ -170,9 +170,11 @@ func playlistCachedCover(
 	return data, cachePath
 }
 
-// playlistStoreCover keeps a drawn grid, best effort: a cache that cannot be
-// written costs a redraw, not an answer.
+// playlistStoreCover keeps a drawn cover (a grid, or one scaled to a size),
+// best effort: a cache that cannot be written costs a redraw, not an answer.
 func playlistStoreCover(cachePath string, grid []byte) {
+	// cachePath is under the cache folder, named by a hash of what it holds.
+	//nolint:gosec // see above
 	if err := os.MkdirAll(path.Dir(cachePath), 0o750); err != nil {
 		sdk.Log("warn", "creating the cover cache failed", "error", err.Error())
 		return
@@ -183,6 +185,7 @@ func playlistStoreCover(cachePath string, grid []byte) {
 		sdk.Log("warn", "caching a playlist cover failed", "error", err.Error())
 		return
 	}
+	//nolint:gosec // see the MkdirAll above
 	if err = os.Rename(tmp, cachePath); err != nil {
 		sdk.Log("warn", "caching a playlist cover failed", "error", err.Error())
 	}
@@ -195,11 +198,7 @@ func playlistAsIs(c *reqCtx, coverPath string) sdk.Response {
 	if err != nil {
 		return c.failErr(envelope.NotFound())
 	}
-	return coverResponse(coverContentType(data), data)
-}
-
-func jpegResponse(data []byte) sdk.Response {
-	return coverResponse("image/jpeg", data)
+	return coverBytes(c, coverContentType(data), data)
 }
 
 func coverResponse(contentType string, data []byte) sdk.Response {

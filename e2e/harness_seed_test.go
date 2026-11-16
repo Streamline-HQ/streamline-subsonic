@@ -21,8 +21,8 @@ type trackSpec struct {
 	Title    string
 	Disc     int
 	Position int
-	// Format is the file's extension and codec: flac, mp3 or opus; flac when
-	// empty.
+	// Format is the file's extension, and so its codec: flac, mp3, opus, m4a
+	// (AAC), ogg (Opus) or wav; flac when empty.
 	Format string
 	NoFile bool
 	// Seconds is the length of the generated audio; 2 when zero.
@@ -279,6 +279,9 @@ func generateAudio(path, format string, seconds int) int64 {
 		"flac": {"-c:a", "flac"},
 		"mp3":  {"-c:a", "libmp3lame", "-b:a", "128k"},
 		"opus": {"-c:a", "libopus", "-b:a", "96k"},
+		"m4a":  {"-c:a", "aac", "-b:a", "128k"},
+		"ogg":  {"-c:a", "libopus", "-b:a", "96k"},
+		"wav":  {"-c:a", "pcm_s16le"},
 	}[format]
 	Expect(codec).NotTo(BeEmpty(), "no codec for %q", format)
 	args := append([]string{

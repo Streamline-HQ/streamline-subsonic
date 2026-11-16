@@ -143,4 +143,34 @@ var _ = g.Describe("mosaic", g.Label("unit"), func() {
 			}
 		})
 	})
+
+	g.Describe("Fit", func() {
+		g.It("scales the larger side down, keeping the proportions", func() {
+			out, scaled, err := Fit(encodePNG(solid(400, 200, red)), 100)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scaled).To(BeTrue())
+			img, err := jpeg.Decode(bytes.NewReader(out))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(img.Bounds().Size()).To(Equal(image.Pt(100, 50)))
+			near(img.At(50, 25), red)
+
+			out, scaled, err = Fit(encodePNG(solid(30, 90, red)), 45)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scaled).To(BeTrue())
+			img, err = jpeg.Decode(bytes.NewReader(out))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(img.Bounds().Size()).To(Equal(image.Pt(15, 45)))
+		})
+
+		g.It("never enlarges a cover, nor touches one it cannot decode", func() {
+			for _, size := range []int{0, -1, 200, 400} {
+				_, scaled, err := Fit(encodePNG(solid(200, 100, red)), size)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(scaled).To(BeFalse(), "size %d", size)
+			}
+			_, scaled, err := Fit([]byte("not an image"), 10)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scaled).To(BeFalse())
+		})
+	})
 })

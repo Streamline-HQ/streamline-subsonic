@@ -27,7 +27,7 @@ Apps see only what you can play: an album appears once at least one of its songs
 
 Each song carries its bit rate and, for a lossless file Streamline has measured, its bit depth and sampling rate (OpenSubsonic `bitDepth`, `samplingRate`), which apps that read them show as a quality badge such as 24-bit / 96 kHz.
 
-Covers are cached by the app for a day (`Cache-Control: private, max-age=86400`).
+Covers are cached by the app for a day (`Cache-Control: private, max-age=86400`). An app that asks for a cover at a size gets it scaled down so its larger side is that size, never enlarged; the scaled copy is kept in the extension's cache folder.
 
 Not available: podcasts, chat, jukebox mode, video and avatars.
 
@@ -56,9 +56,9 @@ Sharing creates a link like `https://your-host/extensions/subsonic/share/AbCdEfâ
 By default an app gets the original file, so seeking and caching work as with any download. Streamline converts on the fly when the app asks for it:
 
 - a **maximum bitrate** lower than the file's (common for "mobile data" settings), or
-- a **format** other than the file's: MP3, Opus or AAC.
+- a **format** other than the file's: MP3, Opus or AAC. A file already in that format is sent as it is: an AAC `.m4a` asked for as AAC, an Opus `.ogg` asked for as Opus (Streamline reads the file's codec to tell).
 
-The converted stream uses the requested bitrate, between 32 and 320 kbps (MP3 defaults to 192, Opus to 128, AAC to 192 when only a format is asked for). Converted streams cannot be seeked by byte range; apps that support OpenSubsonic's `transcodeOffset` restart the stream at the right time instead. Starting at a time always converts the song, so it needs Streamline's ffmpeg service: when none is available the app gets an error rather than the song from its start. Any other conversion that cannot run sends the original file instead. The extension is granted the `ffmpeg` service, which runs Streamline's own ffmpeg with full trust.
+The converted stream uses the requested bitrate, between 32 and 320 kbps (MP3 defaults to 192, Opus to 128, AAC to 192 when only a format is asked for). Converted streams cannot be seeked by byte range; apps that support OpenSubsonic's `transcodeOffset` restart the stream at the right time instead. Starting at a time converts the song, so it needs Streamline's ffmpeg service: when none is available the app gets an error rather than the song from its start. An app that asks for the original file (`format=raw`) never gets a conversion: a start time is then ignored, and the app seeks by byte range. Any other conversion that cannot run sends the original file instead. The extension is granted the `ffmpeg` service, which runs Streamline's own ffmpeg with full trust.
 
 ## Lyrics
 
