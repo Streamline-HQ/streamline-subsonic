@@ -1,0 +1,116 @@
+# Every label the repository carries, and the one list both workflows read:
+# labels.yaml syncs it to GitHub, issue-triage.yaml derives what Claude may
+# touch from `group`.
+#
+#   type, area  — Claude adds and removes these, on new issues and on a backfill
+#   status      — Claude adds these on new issues only, never on a backfill
+#   maintainer  — a person's call; Claude never adds or removes one
+#   renovate    — set by renovate.json on its own PRs
+#
+# A description is also Claude's guidance for when the label fits, so it says
+# what the label covers rather than restating its name. GitHub caps it at 100
+# characters. `aliases` are old names the sync renames in place, keeping the
+# label on every issue that already has it. The sync never deletes a label.
+
+# Type
+- name: bug
+  group: type
+  color: d73a4a
+  description: Something isn't working
+- name: enhancement
+  group: type
+  color: a2eeef
+  description: New feature or request
+- name: documentation
+  group: type
+  color: 0075ca
+  description: The wiki, README or other docs are wrong, missing or unclear
+
+# Status
+- name: needs-triage
+  group: status
+  color: fbca04
+  description: Not triaged yet; still here after the triage run means the run failed
+- name: needs-info
+  group: status
+  color: d876e3
+  description: The report is missing what it takes to act on it
+  aliases: [question]
+- name: possible-duplicate
+  group: status
+  color: cfd3d7
+  description: Looks like an existing issue; a maintainer confirms with `duplicate`
+- name: security
+  group: status
+  color: b60205
+  description: A vulnerability or hardening concern
+
+# Area
+- name: area/browse
+  group: area
+  color: c5def5
+  description: "Browsing and search — artists, albums, songs, genres, album lists, indexes"
+- name: area/streaming
+  group: area
+  color: c5def5
+  description: "Streaming and downloads — transcoding, bit rates, seeking, covers"
+- name: area/playlists
+  group: area
+  color: c5def5
+  description: "Playlists, play queues, bookmarks and internet radio"
+- name: area/sharing
+  group: area
+  color: c5def5
+  description: "Public shares and their web pages"
+- name: area/marks
+  group: area
+  color: c5def5
+  description: "Stars, ratings, play counts, scrobbling and now playing"
+- name: area/lyrics
+  group: area
+  color: c5def5
+  description: "Lyrics — LRC sidecars and embedded tags"
+- name: area/auth
+  group: area
+  color: c5def5
+  description: "Subsonic passwords, sign-in schemes, per-account permissions, user endpoints"
+- name: area/clients
+  group: area
+  color: c5def5
+  description: "Compatibility with a specific Subsonic app (Symfonium, DSub, Feishin, ...)"
+- name: area/deploy
+  group: area
+  color: c5def5
+  description: "Installing and approving the extension, releases, checksums, CI"
+
+# Maintainer
+- name: duplicate
+  group: maintainer
+  color: cfd3d7
+  description: This issue or pull request already exists
+- name: help wanted
+  group: maintainer
+  color: "008672"
+  description: Extra attention is needed
+- name: good first issue
+  group: maintainer
+  color: 7057ff
+  description: Good for newcomers
+- name: invalid
+  group: maintainer
+  color: e4e669
+  description: This doesn't seem right
+- name: wontfix
+  group: maintainer
+  color: ffffff
+  description: This will not be worked on
+
+# Renovate
+- name: dependencies
+  group: renovate
+  color: 0366d6
+  description: Pull requests that update a dependency file
+- name: github_actions
+  group: renovate
+  color: "000000"
+  description: Pull requests that update GitHub Actions code
