@@ -47,6 +47,24 @@ func Detect(params url.Values) Scheme {
 	return SchemeUser
 }
 
+// MissingCredential names the parameter a SchemeUser request still lacks:
+// "p" when it carries neither p nor t, "s" for a t with no salt, "t" for a
+// salt with no token, "" when it is complete. u is the caller's to check.
+func MissingCredential(params url.Values) string {
+	has := func(name string) bool { return params.Get(name) != "" }
+	switch {
+	case has("p"):
+		return ""
+	case has("t") && !has("s"):
+		return "s"
+	case has("s") && !has("t"):
+		return "t"
+	case !has("t"):
+		return "p"
+	}
+	return ""
+}
+
 // Check validates the auth parameters of a request against the stored
 // password: the token form t=md5(password+salt), or the legacy p= in plain or
 // "enc:"+hex. An empty stored password disables access entirely.

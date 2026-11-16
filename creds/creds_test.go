@@ -84,6 +84,15 @@ var _ = g.Describe("credentials", g.Label("unit"), func() {
 		).To(Equal(SchemeConflict))
 	})
 
+	g.It("names the credential a request still lacks", func() {
+		Expect(MissingCredential(url.Values{"p": {"x"}})).To(BeEmpty())
+		Expect(MissingCredential(url.Values{"t": {"x"}, "s": {"y"}})).To(BeEmpty())
+		Expect(MissingCredential(url.Values{})).To(Equal("p"))
+		Expect(MissingCredential(url.Values{"p": {""}})).To(Equal("p"))
+		Expect(MissingCredential(url.Values{"t": {"x"}})).To(Equal("s"))
+		Expect(MissingCredential(url.Values{"s": {"y"}})).To(Equal("t"))
+	})
+
 	g.It("generates passwords of letters and digits", func() {
 		a, err := Generate(24)
 		Expect(err).NotTo(HaveOccurred())

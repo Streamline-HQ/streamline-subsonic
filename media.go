@@ -18,10 +18,10 @@ import (
 )
 
 func init() {
-	register("stream", mediaStream)
-	register("download", mediaDownload)
-	register("getCoverArt", mediaCoverArt)
-	register("getAvatar", mediaAvatar)
+	registerBinary("stream", mediaStream)
+	registerBinary("download", mediaDownload)
+	registerBinary("getCoverArt", mediaCoverArt)
+	registerBinary("getAvatar", mediaAvatar)
 }
 
 // mediaFile is the first file on disk of a track.

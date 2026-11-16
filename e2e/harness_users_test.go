@@ -5,11 +5,13 @@ import (
 	"crypto/md5" //nolint:gosec // the Subsonic token scheme is defined as md5(password+salt)
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/delucks/go-subsonic"
 	. "github.com/onsi/ginkgo/v2"
@@ -124,9 +126,21 @@ type rawResponse struct {
 	Body   []byte
 }
 
-// rest sends GET /rest/<endpoint> with q as given, signing nothing.
+// rest sends GET /rest/<endpoint> with q as given, signing nothing. It adds
+// the v and c every client sends when q has none; a spec about them calls
+// fetch itself.
 func rest(endpoint string, q url.Values) rawResponse {
 	GinkgoHelper()
+	q = maps.Clone(q)
+	if q == nil {
+		q = url.Values{}
+	}
+	if !q.Has("v") {
+		q.Set("v", "1.16.1")
+	}
+	if !q.Has("c") {
+		q.Set("c", "e2e")
+	}
 	return fetch(
 		http.MethodGet,
 		mountBase+"/rest/"+endpoint+"?"+q.Encode(),
@@ -195,10 +209,37 @@ func (u *testUser) call(endpoint string, extra url.Values) map[string]any {
 // callError is get that expects status failed, and returns its error object.
 func (u *testUser) callError(endpoint string, extra url.Values) map[string]any {
 	GinkgoHelper()
-	raw := u.get(endpoint, extra)
-	Expect(raw.Status).To(Equal(http.StatusOK))
-	resp := raw.json()
-	Expect(resp["status"]).To(Equal("failed"), "%s answered %v", endpoint, resp)
+	return u.get(endpoint, extra).failure()
+}
+
+// failure reads a failed answer's error object, from JSON or, as a binary
+// endpoint always answers its errors, from XML; the code is a float64 either
+// way, as errorCode reads it.
+func (r rawResponse) failure() map[string]any {
+	GinkgoHelper()
+	Expect(r.Status).To(Equal(http.StatusOK))
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "text/xml") {
+		var doc struct {
+			Status string `xml:"status,attr"`
+			Error  *struct {
+				Code    int    `xml:"code,attr"`
+				Message string `xml:"message,attr"`
+				HelpURL string `xml:"helpUrl,attr"`
+			} `xml:"error"`
+		}
+		Expect(xml.Unmarshal(r.Body, &doc)).To(Succeed(), string(r.Body))
+		Expect(doc.Status).To(Equal("failed"), string(r.Body))
+		Expect(doc.Error).NotTo(BeNil(), string(r.Body))
+		out := map[string]any{
+			"code": float64(doc.Error.Code), "message": doc.Error.Message,
+		}
+		if doc.Error.HelpURL != "" {
+			out["helpUrl"] = doc.Error.HelpURL
+		}
+		return out
+	}
+	resp := r.json()
+	Expect(resp["status"]).To(Equal("failed"), "%v", resp)
 	errObj, ok := resp["error"].(map[string]any)
 	Expect(ok).To(BeTrue(), "no error in %v", resp)
 	return errObj

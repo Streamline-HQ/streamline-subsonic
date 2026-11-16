@@ -117,7 +117,7 @@ Need another column or table? Do not edit `schema.go` in your revision; say so i
 
 ## Sign-in
 
-`u` is the account's email (matched without case), with `p` (plain or `enc:` hex) or `t`+`s` (`md5(password+salt)`). An unknown login, an account with no Subsonic password and a wrong password all answer error 40 with one message. An `apiKey` answers error 42 (this server offers none), and two mechanisms at once (`apiKey` with any of `u`, `p`, `t`, `s`, or `p` with `t`/`s`) error 43, before any login is looked up. `c.user` is set before any handler runs. `getOpenSubsonicExtensions` answers without credentials.
+`u` is the account's email (matched without case), with `p` (plain or `enc:` hex) or `t`+`s` (`md5(password+salt)`); a missing `p`, or half a token, is error 10. An unknown login, an account with no Subsonic password and a wrong password all answer error 40 with one message. An `apiKey` answers error 42 (this server offers none), and two mechanisms at once (`apiKey` with any of `u`, `p`, `t`, `s`, or `p` with `t`/`s`) error 43, before any login is looked up. `c.user` is set before any handler runs. `getOpenSubsonicExtensions` answers without credentials.
 
 ## e2e harness (`e2e/`, package `e2e`, Ginkgo)
 
@@ -208,6 +208,8 @@ Add the specs the plan's Review Focus names for your domain: permission refusals
 
 ## Parity notes
 
-- The old server had no JSONP: `f=jsonp` answered XML. So does this one.
+- The old server had no JSONP. This one answers `f=jsonp` wrapped in `callback(...)`; a `callback` that is missing or not a JavaScript identifier (or dotted path) is error 10, as XML.
+- Binary endpoints (`stream`, `download`, `getCoverArt`, `getAvatar`) register with `registerBinary`: their errors are an XML document whatever `f` says, as the API defines.
+- Every call but `getOpenSubsonicExtensions` needs `v` and `c` (error 10); a `v` above 1.16 or of another major version is error 30, one below major 1 error 20.
 - Share tokens: see the `/share` paragraph above.
 - Not available to a guest: `PRAGMA`.
