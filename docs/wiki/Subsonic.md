@@ -1,6 +1,6 @@
 # Subsonic
 
-The **Subsonic extension** ([streamline-subsonic](https://github.com/streamline-hq/streamline-subsonic-ext), installed from Settings → Extensions, see [Extensions](Extensions)) speaks the Subsonic API (version 1.16.1) at `/extensions/subsonic/rest`, plus the OpenSubsonic extensions most modern apps look for. Point any Subsonic app at `https://your-host/extensions/subsonic` (the app adds `/rest` itself; in apps that offer several server types, such as Feishin, pick Subsonic or OpenSubsonic, not Navidrome) and sign in with your **email** as the user name and your **Subsonic password** as the password. Generate that password on the Account page (the **Subsonic** card, shown once the extension runs); it is separate from your login password and never works for the web UI.
+The **Subsonic extension** ([streamline-subsonic-ext](https://github.com/Streamline-HQ/streamline-subsonic-ext), installed from Settings → Extensions, see [Extensions](https://github.com/DataHearth/streamline/wiki/Extensions)) speaks the Subsonic API (version 1.16.1) at `/extensions/subsonic/rest`, plus the OpenSubsonic extensions most modern apps look for. Point any Subsonic app at `https://your-host/extensions/subsonic` (the app adds `/rest` itself; in apps that offer several server types, such as Feishin, pick Subsonic or OpenSubsonic, not Navidrome) and sign in with your **email** as the user name and your **Subsonic password** as the password. Generate that password on the Account page (the **Subsonic** card, shown once the extension runs); it is separate from your login password and never works for the web UI.
 
 Apps such as Symfonium, DSub, Ultrasonic, Tempo, play:Sub, Feishin and Sublime Music speak this API.
 
@@ -83,7 +83,7 @@ Accounts are managed by an admin in Streamline's web UI (Settings → Users), ne
 
 ## Library scan
 
-Streamline does not scan a music folder for new files: music arrives through downloads and imports (see [Importing an Existing Library](Importing-an-Existing-Library)). A rescan from an app starts the library scan the host offers extensions, which notices files that were deleted or moved outside Streamline; `getScanStatus` answers whether it is running and how many tracks hold a file. Only admins can start it.
+Streamline does not scan a music folder for new files: music arrives through downloads and imports (see [Importing an Existing Library](https://github.com/DataHearth/streamline/wiki/Importing-an-Existing-Library)). A rescan from an app starts the library scan the host offers extensions, which notices files that were deleted or moved outside Streamline; `getScanStatus` answers whether it is running and how many tracks hold a file. Only admins can start it.
 
 ## Starting fresh
 

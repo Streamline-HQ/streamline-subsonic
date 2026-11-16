@@ -1,4 +1,8 @@
-# streamline-subsonic
+# streamline-subsonic-ext
+
+[![CI](https://github.com/Streamline-HQ/streamline-subsonic-ext/actions/workflows/ci.yaml/badge.svg)](https://github.com/Streamline-HQ/streamline-subsonic-ext/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/Streamline-HQ/streamline-subsonic-ext?sort=semver)](https://github.com/Streamline-HQ/streamline-subsonic-ext/releases/latest)
+[![License: GPL-3.0](https://img.shields.io/github/license/Streamline-HQ/streamline-subsonic-ext)](LICENSE)
 
 A [Subsonic](https://www.subsonic.org/pages/api.jsp) 1.16.1 and [OpenSubsonic](https://opensubsonic.netlify.app/) server for [Streamline](https://github.com/DataHearth/streamline), shipped as a Streamline extension: a WebAssembly module (`subsonic.wasm`) the server loads and runs in a sandbox.
 
@@ -69,7 +73,24 @@ The extension SDK is the `github.com/datahearth/streamline/extensions/sdk` modul
 
 Releases are built by CI: pushing a `v*` tag publishes `subsonic.wasm` and its checksum.
 
-Code layout, conventions and how to add an endpoint: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Contributing
+
+Bug reports and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
+the build/test loop, conventions and the policy on AI-assisted PRs. Participation
+is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Found a vulnerability? Don't open an issue — see [SECURITY.md](SECURITY.md).
+
+## Streamline repositories
+
+| Repository | What it is |
+| --- | --- |
+| [streamline](https://github.com/DataHearth/streamline) | The server: media manager, web UI and extension host |
+| [streamline-player](https://github.com/Streamline-HQ/streamline-player) | The player apps (Android TV, desktop, web) and the HLS streaming engine |
+| [streamline-player-ext](https://github.com/Streamline-HQ/streamline-player-ext) | The `player` extension: the API the player apps talk to |
+| [streamline-opds-ext](https://github.com/Streamline-HQ/streamline-opds-ext) | OPDS 1.2 catalog for e-reader apps |
+| [streamline-subsonic-ext](https://github.com/Streamline-HQ/streamline-subsonic-ext) | Subsonic / OpenSubsonic server for music apps |
 
 ## License
 
