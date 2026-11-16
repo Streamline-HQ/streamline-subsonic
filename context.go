@@ -21,6 +21,9 @@ type reqCtx struct {
 	params url.Values
 	// user is the authenticated account; nil only while authenticating.
 	user *account
+	// xmlErrors answers a failure as XML whatever f says: a binary endpoint
+	// (stream, getCoverArt, ...) reports its errors as an XML document.
+	xmlErrors bool
 }
 
 // handler answers one /rest endpoint.
@@ -175,24 +178,33 @@ func (c *reqCtx) respond(b *body) sdk.Response {
 
 // fail answers a failed call. Subsonic reports it in a 200.
 func (c *reqCtx) fail(code int, msg string) sdk.Response {
-	return c.write(response{
-		Status: envelope.StatusFailed,
-		Error:  &envelope.Error{Code: code, Message: msg},
-	})
+	return c.failWith(&envelope.Error{Code: code, Message: msg})
+}
+
+func (c *reqCtx) failWith(apiErr *envelope.Error) sdk.Response {
+	return c.write(response{Status: envelope.StatusFailed, Error: apiErr})
 }
 
 // failErr answers a handler's error: an *envelope.Error as itself, anything
 // else as a logged "Internal error", never its text.
 func (c *reqCtx) failErr(err error) sdk.Response {
 	if apiErr, ok := errors.AsType[*envelope.Error](err); ok {
-		return c.fail(apiErr.Code, apiErr.Message)
+		return c.failWith(apiErr)
 	}
 	sdk.Log("error", "subsonic request failed", "error", err.Error())
 	return c.fail(envelope.CodeGeneric, "Internal error")
 }
 
+// write encodes resp in the format f names: JSONP once serveREST checked its
+// callback, and always XML for a binary endpoint's error.
 func (c *reqCtx) write(resp response) sdk.Response {
-	contentType, out, err := envelope.Encode(c.param("f"), version, &resp)
+	format := c.param("f")
+	if c.xmlErrors && resp.Status == envelope.StatusFailed {
+		format = ""
+	}
+	contentType, out, err := envelope.Encode(
+		format, c.param("callback"), version, &resp,
+	)
 	if err != nil {
 		sdk.Log("error", "encoding a subsonic response failed", "error", err.Error())
 		return textResponse(http.StatusInternalServerError, "internal error")

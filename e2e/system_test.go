@@ -163,6 +163,64 @@ var _ = Describe("system endpoints", Label("e2e"), func() {
 		Expect(names).To(ConsistOf(
 			"formPost", "songLyrics", "transcodeOffset", "indexBasedQueue",
 		))
+
+		bare := fetch(
+			http.MethodGet, mountBase+"/rest/getOpenSubsonicExtensions", nil, nil,
+		)
+		Expect(string(bare.Body)).To(ContainSubstring(`status="ok"`))
+	})
+
+	It("answers JSONP wrapped in the callback", func() {
+		raw := u.get("ping", url.Values{"f": {"jsonp"}, "callback": {"app.onPing"}})
+		Expect(
+			raw.Header.Get("Content-Type"),
+		).To(HavePrefix("application/javascript"))
+		Expect(string(raw.Body)).To(HavePrefix(`app.onPing({"subsonic-response":{`))
+		Expect(string(raw.Body)).To(ContainSubstring(`"status":"ok"`))
+		Expect(string(raw.Body)).To(HaveSuffix(`});`))
+
+		failed := u.get("getAlbum", url.Values{
+			"f": {"jsonp"}, "callback": {"cb"}, "id": {"al-999999"},
+		})
+		Expect(string(failed.Body)).To(HavePrefix(`cb(`))
+		Expect(string(failed.Body)).To(ContainSubstring(`"code":70`))
+	})
+
+	It("answers JSONP with no usable callback as an XML error 10", func() {
+		for _, cb := range []string{"", "alert(1)", "</script>"} {
+			raw := u.get("ping", url.Values{"f": {"jsonp"}, "callback": {cb}})
+			Expect(raw.Header.Get("Content-Type")).To(HavePrefix("text/xml"), cb)
+			Expect(string(raw.Body)).To(ContainSubstring(`code="10"`), cb)
+			Expect(string(raw.Body)).NotTo(ContainSubstring("alert"), cb)
+		}
+	})
+
+	It("requires the client name and the protocol version", func() {
+		for _, missing := range []string{"v", "c"} {
+			q := u.signed(nil)
+			q.Del(missing)
+			errObj := fetch(http.MethodGet, mountBase+"/rest/ping?"+q.Encode(), nil, nil).
+				json()["error"].(map[string]any)
+			Expect(errorCode(errObj)).To(Equal(10), missing)
+			Expect(errObj["message"]).
+				To(Equal("Required parameter is missing: "+missing), missing)
+		}
+	})
+
+	It("refuses a protocol version it cannot speak", func() {
+		for v, code := range map[string]int{"0.9.0": 20, "2.0.0": 30, "1.17.0": 30} {
+			Expect(errorCode(u.callError("ping", url.Values{"v": {v}}))).
+				To(Equal(code), v)
+		}
+		for _, v := range []string{"1.16.1", "1.16", "1.2.0", "1.16.7"} {
+			Expect(u.call("ping", url.Values{"v": {v}})["status"]).To(Equal("ok"), v)
+		}
+	})
+
+	It("checks the client before the credentials", func() {
+		bad := u.signed(url.Values{"v": {"2.0.0"}, "t": {"wrong"}})
+		errObj := rest("ping", bad).json()["error"].(map[string]any)
+		Expect(errorCode(errObj)).To(Equal(30))
 	})
 
 	It("takes the parameters from a form body", func() {
@@ -276,8 +334,27 @@ var _ = Describe("authentication", Label("e2e"), func() {
 		bare.Password = "anything"
 		wrongCredentials(bare.get("ping", nil))
 		wrongCredentials(rest("ping", url.Values{
-			"u": {bare.Email}, "p": {""}, "f": {"json"},
+			"u": {bare.Email}, "p": {"anything"}, "f": {"json"},
 		}))
+	})
+
+	It("asks for the password, or the half of a token, that is missing", func() {
+		for _, c := range []struct {
+			q    url.Values
+			name string
+		}{
+			{url.Values{"u": {u.Email}}, "p"},
+			{url.Values{"u": {u.Email}, "p": {""}}, "p"},
+			{url.Values{"u": {u.Email}, "t": {"abc"}}, "s"},
+			{url.Values{"u": {u.Email}, "s": {"abc"}}, "t"},
+			{url.Values{"u": {"nobody@e2e.local"}}, "p"},
+		} {
+			c.q.Set("f", "json")
+			errObj := rest("ping", c.q).json()["error"].(map[string]any)
+			Expect(errorCode(errObj)).To(Equal(10), c.q.Encode())
+			Expect(errObj["message"]).
+				To(Equal("Required parameter is missing: "+c.name), c.q.Encode())
+		}
 	})
 
 	It("refuses an account Streamline no longer has", func() {
@@ -305,6 +382,7 @@ var _ = Describe("authentication", Label("e2e"), func() {
 		Expect(errorCode(errObj)).To(Equal(42))
 		Expect(errObj["message"]).
 			To(Equal("Provided authentication mechanism not supported"))
+		Expect(errObj["helpUrl"]).To(HaveSuffix("/docs/wiki/Subsonic.md"))
 	})
 
 	It("answers two mechanisms at once with error 43", func() {
