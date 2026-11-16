@@ -127,8 +127,9 @@ func loadAccountByEmail(email string) (acc *account, found bool, err error) {
 // authenticate resolves the caller from the u parameter and checks the
 // credentials. An unknown user, no Subsonic password and a wrong password all
 // answer error 40 with one message, so the response does not reveal which
-// logins exist. An apiKey answers error 42, as this server offers none, and
-// two mechanisms at once error 43, before any login is looked up.
+// logins exist. An apiKey answers error 42, as this server offers none, two
+// mechanisms at once error 43, and a missing p, t or s error 10, all before
+// any login is looked up.
 func (c *reqCtx) authenticate() error {
 	switch creds.Detect(c.params) {
 	case creds.SchemeConflict:
@@ -140,6 +141,9 @@ func (c *reqCtx) authenticate() error {
 	login := c.param("u")
 	if login == "" {
 		return envelope.MissingParam("u")
+	}
+	if name := creds.MissingCredential(c.params); name != "" {
+		return envelope.MissingParam(name)
 	}
 	acc, found, err := loadAccountByEmail(login)
 	if err != nil {

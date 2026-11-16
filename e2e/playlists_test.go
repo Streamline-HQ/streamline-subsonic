@@ -489,9 +489,7 @@ var _ = Describe("playlists", Label("e2e"), func() {
 			indigo := lib.track(1, 0, 0)
 			p := createPlaylistFor(u, "Bare", trackRef(indigo))
 
-			raw := cover(p["id"].(string))
-			Expect(raw.Status).To(Equal(http.StatusOK))
-			Expect(errorCode(obj(raw.json(), "error"))).To(Equal(70))
+			wantCode(cover(p["id"].(string)), 70)
 		})
 	})
 })

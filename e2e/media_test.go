@@ -21,12 +21,11 @@ func isMP3(b []byte) bool {
 		(len(b) > 1 && b[0] == 0xFF && b[1]&0xE0 == 0xE0)
 }
 
+// wantCode asserts a failed answer with code, read from JSON or from the XML
+// a binary endpoint answers its errors in.
 func wantCode(raw rawResponse, code int) {
 	GinkgoHelper()
-	Expect(raw.Status).To(Equal(http.StatusOK))
-	resp := raw.json()
-	Expect(resp["status"]).To(Equal("failed"), "%v", resp)
-	Expect(errorCode(obj(resp, "error"))).To(Equal(code))
+	Expect(errorCode(raw.failure())).To(Equal(code))
 }
 
 // tagFile rewrites an audio file with one more metadata tag, streams copied.
@@ -396,6 +395,25 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 		for _, id := range []string{"al-999999", "ar-999999"} {
 			wantCode(u.get("getCoverArt", url.Values{"id": {id}}), 70)
 		}
+	})
+})
+
+var _ = Describe("binary endpoints", Label("e2e"), func() {
+	It("answer their errors as XML even when f=json", func() {
+		u := app.subsonicUser("binary-errors")
+		for _, endpoint := range []string{
+			"stream", "download", "getCoverArt", "getAvatar",
+		} {
+			raw := u.get(endpoint, url.Values{"f": {"json"}})
+			Expect(
+				raw.Header.Get("Content-Type"),
+			).To(HavePrefix("text/xml"), endpoint)
+			Expect(errorCode(raw.failure())).To(Equal(10), endpoint)
+		}
+		bad := u.signed(url.Values{"t": {"wrong"}})
+		raw := rest("stream", bad)
+		Expect(raw.Header.Get("Content-Type")).To(HavePrefix("text/xml"))
+		Expect(errorCode(raw.failure())).To(Equal(40))
 	})
 })
 

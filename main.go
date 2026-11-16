@@ -54,6 +54,17 @@ func register(name string, h handler) {
 	endpoints[name+".view"] = h
 }
 
+// binaryEndpoints answer binary data on success and an XML error document on
+// failure, whatever f says, as the API defines for stream, getCoverArt and
+// their kin.
+var binaryEndpoints = map[string]bool{}
+
+// registerBinary is register for an endpoint that answers binary data.
+func registerBinary(name string, h handler) {
+	register(name, h)
+	binaryEndpoints[name] = true
+}
+
 // shareHandler answers /share/...; the shares file sets it from its init.
 var shareHandler func(sdk.Request) sdk.Response
 
@@ -96,8 +107,18 @@ func serveREST(r sdk.Request, name string) sdk.Response {
 	if err != nil {
 		return (&reqCtx{req: r}).fail(envelope.CodeGeneric, "Malformed request")
 	}
+	c.xmlErrors = binaryEndpoints[name]
+	if c.param("f") == envelope.FormatJSONP &&
+		!envelope.ValidCallback(c.param("callback")) {
+		// No callback to wrap the error in: it goes out as XML.
+		c.xmlErrors = true
+		return c.failErr(envelope.MissingParam("callback"))
+	}
 	if name == openSubsonicExtensions {
 		return c.ok(&body{OpenSubsonicExtensions: extensions})
+	}
+	if err := c.checkClient(); err != nil {
+		return c.failErr(err)
 	}
 	if err := c.authenticate(); err != nil {
 		return c.failErr(err)
@@ -107,6 +128,19 @@ func serveREST(r sdk.Request, name string) sdk.Response {
 		return c.fail(envelope.CodeGeneric, "Not implemented")
 	}
 	return callHandler(c, name, h)
+}
+
+// checkClient requires the v and c every call carries, and refuses a v that
+// names a protocol this server cannot speak (error 20 or 30).
+func (c *reqCtx) checkClient() error {
+	v := c.param("v")
+	if v == "" {
+		return envelope.MissingParam("v")
+	}
+	if c.param("c") == "" {
+		return envelope.MissingParam("c")
+	}
+	return envelope.CheckVersion(v)
 }
 
 // callHandler runs h and turns a panic into the generic Subsonic error, so a
