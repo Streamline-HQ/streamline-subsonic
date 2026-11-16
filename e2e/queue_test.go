@@ -142,8 +142,17 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 		emptyQueue("getPlayQueue", "playQueue", "current")
 		emptyQueue("getPlayQueueByIndex", "playQueueByIndex", "currentIndex")
 
-		u.call("savePlayQueue", url.Values{"id": {trackRef(withFile)}})
+		u.call("savePlayQueue", url.Values{
+			"id": {trackRef(withFile)}, "current": {trackRef(withFile)},
+		})
 		u.call("savePlayQueueByIndex", nil)
+		emptyQueue("getPlayQueue", "playQueue", "current")
+
+		// A current entry sent with no id is ignored: the call still clears.
+		u.call("savePlayQueue", url.Values{
+			"id": {trackRef(withFile)}, "current": {trackRef(withFile)},
+		})
+		u.call("savePlayQueue", url.Values{"current": {trackRef(withFile)}})
 		emptyQueue("getPlayQueue", "playQueue", "current")
 	})
 
@@ -152,8 +161,17 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 			"id": {trackRef(withFile)}, "current": {trackRef(noFile)},
 		}))).To(Equal(0))
 		Expect(errorCode(u.callError("savePlayQueue", url.Values{
-			"id": {trackRef(withFile)}, "position": {"-1"},
+			"id":       {trackRef(withFile)},
+			"current":  {trackRef(withFile)},
+			"position": {"-1"},
 		}))).To(Equal(0))
+	})
+
+	It("asks for the current entry of a queue that is not empty", func() {
+		Expect(errorCode(u.callError("savePlayQueue", url.Values{
+			"id": {trackRef(withFile)},
+		}))).To(Equal(10))
+		emptyQueue("getPlayQueue", "playQueue", "current")
 	})
 
 	It(
@@ -236,11 +254,14 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 
 	It("never shows one user's queue to another", func() {
 		other := app.subsonicUser("queue-other")
-		u.call("savePlayQueue", url.Values{"id": {trackRef(withFile)}})
+		one := url.Values{
+			"id": {trackRef(withFile)}, "current": {trackRef(withFile)},
+		}
+		u.call("savePlayQueue", one)
 		Expect(list(obj(other.call("getPlayQueue", nil), "playQueue"), "entry")).
 			To(BeEmpty())
 
-		other.call("savePlayQueue", url.Values{"id": {trackRef(withFile)}})
+		other.call("savePlayQueue", one)
 		other.call("savePlayQueue", nil)
 		Expect(
 			ids(list(obj(u.call("getPlayQueue", nil), "playQueue"), "entry")),
@@ -250,7 +271,7 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 	It("never splits a character when it trims the client name", func() {
 		name := strings.Repeat("a", 63) + "é"
 		u.call("savePlayQueue", url.Values{
-			"id": {trackRef(withFile)}, "c": {name},
+			"id": {trackRef(withFile)}, "current": {trackRef(withFile)}, "c": {name},
 		})
 		q := obj(u.call("getPlayQueue", nil), "playQueue")
 		changedBy := q["changedBy"].(string)
@@ -305,12 +326,30 @@ var _ = Describe("internet radio", Label("e2e"), func() {
 
 		admin.call("updateInternetRadioStation", url.Values{
 			"id": {id}, "name": {name + " Rock"},
-			"streamUrl": {"https://example.org/rock"},
+			"streamUrl":   {"https://example.org/rock"},
+			"homepageUrl": {"https://www.example.org/fip"},
 		})
 		s = find()
 		Expect(s["name"]).To(Equal(name + " Rock"))
 		Expect(s["streamUrl"]).To(Equal("https://example.org/rock"))
 		Expect(s["homePageUrl"]).To(Equal("https://www.example.org/fip"))
+
+		// An update replaces the station: name and streamUrl are required,
+		// and a homepageUrl left out is cleared.
+		for _, missing := range []string{"name", "streamUrl"} {
+			q := url.Values{
+				"id": {id}, "name": {name + " Rock"},
+				"streamUrl": {"https://example.org/rock"},
+			}
+			q.Del(missing)
+			Expect(errorCode(admin.callError("updateInternetRadioStation", q))).
+				To(Equal(10), missing)
+		}
+		admin.call("updateInternetRadioStation", url.Values{
+			"id": {id}, "name": {name + " Rock"},
+			"streamUrl": {"https://example.org/rock"},
+		})
+		Expect(find()).NotTo(HaveKey("homePageUrl"))
 
 		Expect(errorCode(admin.callError("createInternetRadioStation", url.Values{
 			"name": {"Bad"}, "streamUrl": {"javascript:alert(1)"},
@@ -319,7 +358,8 @@ var _ = Describe("internet radio", Label("e2e"), func() {
 			"name": {"Bad"},
 		}))).To(Equal(10))
 		Expect(errorCode(admin.callError("updateInternetRadioStation", url.Values{
-			"id": {id}, "homepageUrl": {"file:///etc/passwd"},
+			"id": {id}, "name": {name}, "streamUrl": {"https://example.org/rock"},
+			"homepageUrl": {"file:///etc/passwd"},
 		}))).To(Equal(0))
 
 		admin.call("deleteInternetRadioStation", url.Values{"id": {id}})
@@ -328,7 +368,7 @@ var _ = Describe("internet radio", Label("e2e"), func() {
 			"id": {id},
 		}))).To(Equal(70))
 		Expect(errorCode(admin.callError("updateInternetRadioStation", url.Values{
-			"id": {id}, "name": {"x"},
+			"id": {id}, "name": {"x"}, "streamUrl": {"https://example.org/rock"},
 		}))).To(Equal(70))
 		Expect(errorCode(admin.callError("deleteInternetRadioStation", url.Values{
 			"id": {"tr-1"},

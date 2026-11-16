@@ -1028,10 +1028,10 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			Expect(since(utc.Add(time.Minute))).To(BeEquivalentTo(0))
 		})
 
-		It("pages a search past 100 hits", func() {
+		It("pages a search past 500 hits", func() {
 			prefix := app.unique("Bulk Band")
 			now := coreTime(time.Now())
-			for i := range 150 {
+			for i := range 520 {
 				res, err := app.core.Exec(
 					`INSERT INTO artists(create_time, update_time, mbid, name, sort_name)
 					VALUES(?, ?, ?, ?, ?)`,
@@ -1072,15 +1072,32 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			}
 
 			res := obj(u.call("search3", url.Values{
-				"query": {prefix}, "artistCount": {"150"},
+				"query": {prefix}, "artistCount": {"600"},
 				"albumCount": {"0"}, "songCount": {"0"},
 			}), "searchResult3")
-			Expect(list(res, "artist")).To(HaveLen(150))
+			Expect(list(res, "artist")).To(HaveLen(520))
 			res = obj(u.call("search3", url.Values{
-				"query": {prefix}, "artistCount": {"100"}, "artistOffset": {"100"},
+				"query": {prefix}, "artistCount": {"100"}, "artistOffset": {"500"},
 				"albumCount": {"0"}, "songCount": {"0"},
 			}), "searchResult3")
-			Expect(list(res, "artist")).To(HaveLen(50))
+			Expect(list(res, "artist")).To(HaveLen(20))
+			res = obj(u.call("search2", url.Values{
+				"query": {prefix}, "artistCount": {"0"},
+				"albumCount": {"0"}, "songCount": {"510"},
+			}), "searchResult2")
+			Expect(list(res, "song")).To(HaveLen(510))
+
+			// The old search: no ceiling of 100, and count=0 is the total only.
+			res = obj(u.call("search", url.Values{
+				"artist": {prefix}, "count": {"150"},
+			}), "searchResult")
+			Expect(res["totalHits"]).To(BeEquivalentTo(520))
+			Expect(list(res, "match")).To(HaveLen(150))
+			res = obj(u.call("search", url.Values{
+				"artist": {prefix}, "count": {"0"},
+			}), "searchResult")
+			Expect(res["totalHits"]).To(BeEquivalentTo(520))
+			Expect(list(res, "match")).To(BeEmpty())
 		})
 	})
 

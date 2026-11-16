@@ -91,6 +91,7 @@ var _ = Describe("playlists", Label("e2e"), func() {
 		Expect(p["name"]).To(Equal(name))
 		Expect(p["owner"]).To(Equal(u.Email))
 		Expect(p["public"]).To(BeFalse())
+		Expect(p["readonly"]).To(BeFalse())
 		Expect(p["coverArt"]).To(Equal(p["id"]))
 		Expect(p["created"]).NotTo(BeEmpty())
 		Expect(p["changed"]).NotTo(BeEmpty())
@@ -103,6 +104,7 @@ var _ = Describe("playlists", Label("e2e"), func() {
 		all := list(obj(u.call("getPlaylists", nil), "playlists"), "playlist")
 		Expect(all).To(HaveLen(1))
 		Expect(all[0]).NotTo(HaveKey("entry"))
+		Expect(all[0]).To(HaveKeyWithValue("readonly", false))
 		Expect(all[0]["songCount"]).To(BeEquivalentTo(2))
 
 		id := p["id"].(string)
@@ -333,6 +335,19 @@ var _ = Describe("playlists", Label("e2e"), func() {
 					"playlist",
 				)
 				Expect(public["owner"]).To(Equal(owner.Email))
+				// readonly tells each caller whether it may change it.
+				Expect(public["readonly"]).To(BeTrue())
+				for _, p := range list(
+					obj(other.call("getPlaylists", nil), "playlists"), "playlist",
+				) {
+					if p["id"] == id {
+						Expect(p["readonly"]).To(BeTrue())
+					}
+				}
+				Expect(obj(admin.call("getPlaylist", url.Values{"id": {id}}),
+					"playlist")["readonly"]).To(BeFalse())
+				Expect(obj(owner.call("getPlaylist", url.Values{"id": {id}}),
+					"playlist")["readonly"]).To(BeFalse())
 				Expect(
 					ids(list(public, "entry")),
 				).To(Equal([]string{trackRef(dawn)}))

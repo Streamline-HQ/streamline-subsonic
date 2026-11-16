@@ -86,6 +86,18 @@ var _ = Describe("stars", Label("e2e"), func() {
 		Expect(list(folder, "album")[0]["isDir"]).To(BeTrue())
 		Expect(ids(list(folder, "song"))).To(ConsistOf(markTrack(song)))
 
+		for _, endpoint := range []string{"getStarred", "getStarred2"} {
+			key := map[string]string{
+				"getStarred": "starred", "getStarred2": "starred2",
+			}[endpoint]
+			other := obj(u.call(endpoint, url.Values{"musicFolderId": {"2"}}), key)
+			Expect(list(other, "song")).To(BeEmpty(), endpoint)
+			Expect(list(other, "album")).To(BeEmpty(), endpoint)
+			Expect(list(other, "artist")).To(BeEmpty(), endpoint)
+			mine := obj(u.call(endpoint, url.Values{"musicFolderId": {"1"}}), key)
+			Expect(ids(list(mine, "song"))).To(ConsistOf(markTrack(song)), endpoint)
+		}
+
 		u.call("unstar", url.Values{"id": {markTrack(song), markAlbum(album)}})
 		got = marksStarred2(u)
 		Expect(list(got, "song")).To(BeEmpty())
@@ -521,6 +533,37 @@ var _ = Describe("getNowPlaying", Label("e2e"), func() {
 			).NotTo(ContainElement(HaveKeyWithValue("id", markTrack(song))))
 		},
 	)
+
+	It("names each player by the same id on every call", func() {
+		a, b := lib.track(0, 0, 0), lib.track(0, 0, 1)
+		other := app.subsonicUser("playing-other")
+		u.call("scrobble", url.Values{
+			"id": {markTrack(a)}, "submission": {"false"}, "c": {"phone"},
+		})
+		playerID := func(who *testUser, player string) any {
+			GinkgoHelper()
+			for _, e := range marksEntriesOf(marksNowPlaying(u), who.Email) {
+				if e["playerName"] == player {
+					return e["playerId"]
+				}
+			}
+			Fail("no entry for " + player)
+			return nil
+		}
+		phone := playerID(u, "phone")
+
+		// Newer entries sort first; the phone keeps its id all the same.
+		u.call("scrobble", url.Values{
+			"id": {markTrack(b)}, "submission": {"false"}, "c": {"desk"},
+		})
+		other.call("scrobble", url.Values{
+			"id": {markTrack(b)}, "submission": {"false"}, "c": {"phone"},
+		})
+		Expect(playerID(u, "phone")).To(Equal(phone))
+		Expect(playerID(u, "desk")).NotTo(Equal(phone))
+		Expect(playerID(other, "phone")).NotTo(Equal(phone))
+		Expect(phone).To(BeNumerically(">", 0))
+	})
 
 	It("keeps an entry when the final scrobble is another song", func() {
 		a, b := lib.track(0, 0, 0), lib.track(0, 0, 1)

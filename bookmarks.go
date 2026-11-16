@@ -270,16 +270,23 @@ func savePlayQueue(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	current := 0
-	if raw := c.param("current"); raw != "" {
-		kind, id, err := ids.Parse(raw)
-		if err != nil || kind != ids.KindTrack {
-			return c.failErr(envelope.NotFound())
-		}
-		current = slices.Index(trackIDs, id)
-		if current < 0 {
-			return c.fail(envelope.CodeGeneric, "current is not in the queue")
-		}
+	if len(trackIDs) == 0 {
+		// Clearing the queue: a current entry has nothing to name, so it is
+		// ignored.
+		return queueStore(c, nil, 0)
+	}
+	// OpenSubsonic requires current unless the queue is empty.
+	raw := c.param("current")
+	if raw == "" {
+		return c.failErr(envelope.MissingParam("current"))
+	}
+	kind, id, err := ids.Parse(raw)
+	if err != nil || kind != ids.KindTrack {
+		return c.failErr(envelope.NotFound())
+	}
+	current := slices.Index(trackIDs, id)
+	if current < 0 {
+		return c.fail(envelope.CodeGeneric, "current is not in the queue")
 	}
 	return queueStore(c, trackIDs, current)
 }

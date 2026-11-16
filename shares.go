@@ -276,7 +276,7 @@ func getShares(c *reqCtx) sdk.Response {
 		}
 		out.Share = append(out.Share, toShareInfo(c, s, ts))
 	}
-	return c.ok(&body{Shares: out})
+	return c.respond(&body{Shares: out})
 }
 
 func createShare(c *reqCtx) sdk.Response {
@@ -341,7 +341,9 @@ func createShare(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	return c.ok(&body{Shares: &shares{Share: []shareInfo{toShareInfo(c, s, ts)}}})
+	return c.respond(
+		&body{Shares: &shares{Share: []shareInfo{toShareInfo(c, s, ts)}}},
+	)
 }
 
 // ownShare checks the share is the caller's; another account's share does not

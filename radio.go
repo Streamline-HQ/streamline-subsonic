@@ -53,41 +53,33 @@ func getInternetRadioStations(c *reqCtx) sdk.Response {
 	return c.ok(&body{InternetRadioStations: out})
 }
 
-// radioFields reads name, streamUrl and homepageUrl; required makes the
-// first two mandatory (create), otherwise each is applied only when sent.
+// radioFields are a station as create and update take it: name and streamUrl
+// required, homepageUrl optional. An update replaces the whole station, as the
+// spec has it take every field, so a homepageUrl it leaves out is cleared.
 type radioFields struct {
-	name, stream, homepage *string
+	name, stream, homepage string
 }
 
-func radioRead(c *reqCtx, required bool) (radioFields, error) {
+func radioRead(c *reqCtx) (radioFields, error) {
 	var f radioFields
-	if _, ok := c.params["name"]; ok || required {
-		name := strings.TrimSpace(c.param("name"))
-		if name == "" {
-			return f, envelope.MissingParam("name")
-		}
-		f.name = &name
+	f.name = strings.TrimSpace(c.param("name"))
+	if f.name == "" {
+		return f, envelope.MissingParam("name")
 	}
-	if _, ok := c.params["streamUrl"]; ok || required {
-		if c.param("streamUrl") == "" {
-			return f, envelope.MissingParam("streamUrl")
-		}
-		s, ok := radioWebURL(c.param("streamUrl"))
+	if c.param("streamUrl") == "" {
+		return f, envelope.MissingParam("streamUrl")
+	}
+	s, ok := radioWebURL(c.param("streamUrl"))
+	if !ok {
+		return f, radioBadURL("streamUrl")
+	}
+	f.stream = s
+	if raw := strings.TrimSpace(c.param("homepageUrl")); raw != "" {
+		hp, ok := radioWebURL(raw)
 		if !ok {
-			return f, radioBadURL("streamUrl")
+			return f, radioBadURL("homepageUrl")
 		}
-		f.stream = &s
-	}
-	if _, ok := c.params["homepageUrl"]; ok {
-		hp := ""
-		if raw := strings.TrimSpace(c.param("homepageUrl")); raw != "" {
-			s, ok := radioWebURL(raw)
-			if !ok {
-				return f, radioBadURL("homepageUrl")
-			}
-			hp = s
-		}
-		f.homepage = &hp
+		f.homepage = hp
 	}
 	return f, nil
 }
@@ -97,16 +89,12 @@ func createInternetRadioStation(c *reqCtx) sdk.Response {
 	if !c.user.isAdmin() {
 		return c.failErr(envelope.NotAuthorized())
 	}
-	f, err := radioRead(c, true)
+	f, err := radioRead(c)
 	if err != nil {
 		return c.failErr(err)
 	}
-	homepage := ""
-	if f.homepage != nil {
-		homepage = *f.homepage
-	}
 	if _, err := exec(`INSERT INTO radio_stations(name, stream_url, homepage_url,
-		created_at) VALUES(?, ?, ?, ?)`, *f.name, *f.stream, homepage, nowStored(),
+		created_at) VALUES(?, ?, ?, ?)`, f.name, f.stream, f.homepage, nowStored(),
 	); err != nil {
 		return c.failErr(err)
 	}
@@ -121,7 +109,7 @@ func updateInternetRadioStation(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	f, err := radioRead(c, false)
+	f, err := radioRead(c)
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -132,26 +120,10 @@ func updateInternetRadioStation(c *reqCtx) sdk.Response {
 	} else if !found {
 		return c.failErr(envelope.NotFound())
 	}
-	var sets []string
-	var args []any
-	for _, field := range []struct {
-		column string
-		value  *string
-	}{
-		{"name", f.name}, {"stream_url", f.stream}, {"homepage_url", f.homepage},
-	} {
-		if field.value != nil {
-			sets = append(sets, field.column+" = ?")
-			args = append(args, *field.value)
-		}
-	}
-	if len(sets) > 0 {
-		if _, err := exec(
-			"UPDATE radio_stations SET "+strings.Join(sets, ", ")+" WHERE id = ?",
-			append(args, id)...,
-		); err != nil {
-			return c.failErr(err)
-		}
+	if _, err := exec(`UPDATE radio_stations SET name = ?, stream_url = ?,
+		homepage_url = ? WHERE id = ?`, f.name, f.stream, f.homepage, id,
+	); err != nil {
+		return c.failErr(err)
 	}
 	return c.ok(nil)
 }

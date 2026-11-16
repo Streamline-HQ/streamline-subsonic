@@ -39,7 +39,7 @@ Stars, ratings and play counts belong to you: other users never see yours. Playi
 
 ## Playlists
 
-A playlist is private to you unless you make it public. Public playlists show up for every user, but only you (or an admin) can change or delete them. A song whose file disappears from the library is skipped when the playlist is shown, and comes back if the file returns.
+A playlist is private to you unless you make it public. Public playlists show up for every user, but only you (or an admin) can change or delete them. Apps that read OpenSubsonic's `readonly` flag hide the edit actions on a playlist you cannot change. A song whose file disappears from the library is skipped when the playlist is shown, and comes back if the file returns.
 
 ## Sharing
 

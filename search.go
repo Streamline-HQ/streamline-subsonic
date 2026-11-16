@@ -13,10 +13,11 @@ func init() {
 	register("search3", searchID3)
 }
 
-// maxSearchSize bounds search2/search3 counts. Clients sync the whole library
-// by paging an empty query at their own count and stop at the first short
-// page, so a ceiling below the counts they send ends the sync early.
-const maxSearchSize = browseMaxList
+// maxSearchSize bounds the search counts. The spec names no maximum, and
+// clients sync the whole library by paging an empty query at their own count
+// and stop at the first short page, so the ceiling sits far above any count a
+// client sends and only bounds what one answer holds in memory.
+const maxSearchSize = 10000
 
 // searchQuery is the query parameter with the double quotes some clients wrap
 // it in removed: Symfonium and DSub send `""` to mean "everything" when they
@@ -167,15 +168,19 @@ func searchLegacy(c *reqCtx) sdk.Response {
 		return c.failErr(err)
 	}
 	offset := c.intParam("offset", 0, 0, browseMaxOffset)
-	songs, err := songChildren(songQuery{
-		where:  where,
-		args:   args,
-		order:  "t.title, t.id",
-		limit:  c.intParam("count", browsePageSize, 1, browseMaxPage),
-		offset: offset,
-	})
-	if err != nil {
-		return c.failErr(err)
+	// count=0 asks for no match, only the total.
+	songs := []child{}
+	if count := c.intParam("count", browsePageSize, 0, maxSearchSize); count > 0 {
+		songs, err = songChildren(songQuery{
+			where:  where,
+			args:   args,
+			order:  "t.title, t.id",
+			limit:  count,
+			offset: offset,
+		})
+		if err != nil {
+			return c.failErr(err)
+		}
 	}
 	return c.respond(&body{SearchResult: &searchResult{
 		Offset: offset, TotalHits: total, Match: orEmpty(songs),

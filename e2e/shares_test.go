@@ -148,6 +148,25 @@ var _ = Describe("shares", Label("e2e"), func() {
 		Expect(got[0]["lastVisited"]).NotTo(BeEmpty())
 	})
 
+	It("carries the owner's own marks on the shared songs", func() {
+		song := lib.track(0, 0, 0)
+		owner.call("star", url.Values{"id": {"tr-" + itoa(song.ID)}})
+		owner.call("setRating", url.Values{
+			"id": {"tr-" + itoa(song.ID)}, "rating": {"4"},
+		})
+		s := createShare(owner, url.Values{"id": {"tr-" + itoa(song.ID)}})
+		Expect(list(s, "entry")[0]).To(And(
+			HaveKeyWithValue("starred", Not(BeEmpty())),
+			HaveKeyWithValue("userRating", BeEquivalentTo(4)),
+		))
+		got := list(obj(owner.call("getShares", nil), "shares"), "share")
+		Expect(got).To(HaveLen(1))
+		Expect(list(got[0], "entry")[0]).To(And(
+			HaveKeyWithValue("starred", Not(BeEmpty())),
+			HaveKeyWithValue("userRating", BeEquivalentTo(4)),
+		))
+	})
+
 	It("stops serving a share whose owner is locked", func() {
 		album := lib.Artists[0].Albums[0]
 		s := createShare(owner, url.Values{"id": {"al-" + itoa(album.ID)}})

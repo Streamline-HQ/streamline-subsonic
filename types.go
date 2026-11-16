@@ -249,6 +249,7 @@ type playlistInfo struct {
 	Created   string `xml:"created,attr"            json:"created"`
 	Changed   string `xml:"changed,attr"            json:"changed"`
 	CoverArt  string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
+	Readonly  bool   `xml:"readonly,attr"           json:"readonly"`
 }
 
 type playlistWith struct {

@@ -82,6 +82,11 @@ func (c *reqCtx) loadPlaylist(id uint32) (playlistRecord, error) {
 	return p, nil
 }
 
+// mayEdit reports whether the caller may change p: its owner, or an admin.
+func (c *reqCtx) mayEdit(p playlistRecord) bool {
+	return p.ownerID == c.user.ID || c.user.isAdmin()
+}
+
 // ownPlaylist loads a playlist the caller may change: their own, or any when
 // they are an admin.
 func (c *reqCtx) ownPlaylist(id uint32) (playlistRecord, error) {
@@ -89,13 +94,19 @@ func (c *reqCtx) ownPlaylist(id uint32) (playlistRecord, error) {
 	if err != nil {
 		return playlistRecord{}, err
 	}
-	if p.ownerID != c.user.ID && !c.user.isAdmin() {
+	if !c.mayEdit(p) {
 		return playlistRecord{}, envelope.NotAuthorized()
 	}
 	return p, nil
 }
 
-func playlistInfoOf(p playlistRecord, entries []child) playlistInfo {
+// playlistInfoOf is p as the caller sees it: readonly is the OpenSubsonic
+// flag telling a client to hide the edits ownPlaylist would refuse.
+func playlistInfoOf(
+	c *reqCtx,
+	p playlistRecord,
+	entries []child,
+) playlistInfo {
 	var duration uint32
 	for _, e := range entries {
 		duration += e.Duration
@@ -110,6 +121,7 @@ func playlistInfoOf(p playlistRecord, entries []child) playlistInfo {
 		Duration:  duration,
 		Created:   timestamp(p.created),
 		Changed:   timestamp(p.changed),
+		Readonly:  !c.mayEdit(p),
 	}
 	if len(entries) > 0 {
 		out.CoverArt = out.ID
@@ -129,7 +141,10 @@ func playlistEntries(stored []uint32, songs map[uint32]child) []child {
 	return out
 }
 
-func playlistWithEntries(p playlistRecord) (*playlistWith, error) {
+func playlistWithEntries(
+	c *reqCtx,
+	p playlistRecord,
+) (*playlistWith, error) {
 	stored, err := playlistTrackIDs([]uint32{p.id})
 	if err != nil {
 		return nil, err
@@ -140,7 +155,7 @@ func playlistWithEntries(p playlistRecord) (*playlistWith, error) {
 	}
 	entries := playlistEntries(stored[p.id], songs)
 	return &playlistWith{
-		playlistInfo: playlistInfoOf(p, entries),
+		playlistInfo: playlistInfoOf(c, p, entries),
 		Entry:        entries,
 	}, nil
 }
@@ -222,7 +237,7 @@ func getPlaylists(c *reqCtx) sdk.Response {
 	for _, p := range records {
 		out.Playlist = append(
 			out.Playlist,
-			playlistInfoOf(p, playlistEntries(stored[p.id], songs)),
+			playlistInfoOf(c, p, playlistEntries(stored[p.id], songs)),
 		)
 	}
 	return c.ok(&body{Playlists: out})
@@ -237,7 +252,7 @@ func getPlaylist(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	full, err := playlistWithEntries(p)
+	full, err := playlistWithEntries(c, p)
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -298,7 +313,7 @@ func createPlaylist(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	full, err := playlistWithEntries(p)
+	full, err := playlistWithEntries(c, p)
 	if err != nil {
 		return c.failErr(err)
 	}

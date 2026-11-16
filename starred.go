@@ -169,8 +169,19 @@ func albumAsChild(a albumID3) child {
 	}
 }
 
+// starredLoad is loadStarred for the two endpoints: a musicFolderId naming
+// anything but the library is the empty set, as for the other lists.
+func starredLoad(c *reqCtx) (*starredSet, error) {
+	if browseOtherFolder(c) {
+		return &starredSet{
+			artists: []artistID3{}, albums: []albumID3{}, songs: []child{},
+		}, nil
+	}
+	return loadStarred(c)
+}
+
 func getStarred(c *reqCtx) sdk.Response {
-	set, err := loadStarred(c)
+	set, err := starredLoad(c)
 	if err != nil {
 		return c.failErr(err)
 	}
@@ -184,7 +195,7 @@ func getStarred(c *reqCtx) sdk.Response {
 }
 
 func getStarred2(c *reqCtx) sdk.Response {
-	set, err := loadStarred(c)
+	set, err := starredLoad(c)
 	if err != nil {
 		return c.failErr(err)
 	}

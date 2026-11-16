@@ -1,6 +1,8 @@
 package main
 
 import (
+	"hash/fnv"
+	"strconv"
 	"time"
 
 	"github.com/datahearth/streamline/extensions/sdk"
@@ -66,10 +68,19 @@ func finishNowPlaying(userID uint32, player string, trackID uint32) error {
 	return err
 }
 
+// nowPlayingPlayerID names a player the same way on every call: a positive
+// 31-bit FNV-1a hash of the user and the player name, so an entry keeps its id
+// while others come and go.
+func nowPlayingPlayerID(userID uint32, player string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(strconv.FormatUint(uint64(userID), 10) + "\x00" + player))
+	return int(h.Sum32() & 0x7fffffff)
+}
+
 func getNowPlaying(c *reqCtx) sdk.Response {
 	now := time.Now().UTC()
 	rows, err := query(
-		`SELECT np.track_id, np.player, np.started_at, l.email
+		`SELECT np.track_id, np.player, np.started_at, l.email, np.user_id
 		FROM now_playing np JOIN streamline_user_logins l ON l.user_id = np.user_id
 		WHERE np.expires_at >= ?
 		ORDER BY np.started_at DESC, np.user_id, np.player`,
@@ -87,7 +98,7 @@ func getNowPlaying(c *reqCtx) sdk.Response {
 		return c.failErr(err)
 	}
 	out := &nowPlayingList{Entry: []nowPlayingEntry{}}
-	for i, r := range rows {
+	for _, r := range rows {
 		song, playable := songs[r.uint(0)]
 		if !playable {
 			continue
@@ -96,7 +107,7 @@ func getNowPlaying(c *reqCtx) sdk.Response {
 			child:      song,
 			Username:   r.str(3),
 			MinutesAgo: int(now.Sub(r.time(2)).Minutes()),
-			PlayerID:   i + 1,
+			PlayerID:   nowPlayingPlayerID(r.uint(4), r.str(1)),
 			PlayerName: r.str(1),
 		})
 	}
