@@ -62,7 +62,11 @@ The converted stream uses the requested bitrate, between 32 and 320 kbps (MP3 de
 
 ## Lyrics
 
-Put a `.lrc` file with the same name next to the song (`01 - Song.flac` and `01 - Song.lrc`) for timed lyrics. Without one, lyrics embedded in the file are used. Section headers such as `[Chorus: Artist]` in untimed lyrics are kept as lines. Streamline never fetches lyrics from the internet: it only reads what is on disk.
+Put a `.lrc` file with the same name next to the song (`01 - Song.flac` and `01 - Song.lrc`, or `.LRC`) for timed lyrics. Lyrics embedded in the file are read too. Apps that ask for every version (OpenSubsonic `getLyricsBySongId`) get the `.lrc` first, then each embedded lyrics tag (for instance one per language), with the same words listed once. Apps that ask for one version get the `.lrc` when there is one. Section headers such as `[Chorus: Artist]` in untimed lyrics are kept as lines. Streamline never fetches lyrics from the internet: it only reads what is on disk.
+
+Each version carries its language when the source names one: an `[la:fr]` line in the `.lrc`, or the language of an embedded MP3 lyrics frame (`eng`). Otherwise the language is unknown (`xxx`).
+
+Looking lyrics up by artist and title (`getLyrics`) matches the artist the song is credited to as well as its album's, whatever the case.
 
 ## Users
 

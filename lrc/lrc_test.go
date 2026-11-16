@@ -51,6 +51,12 @@ var _ = Describe("Parse", Label("unit"), func() {
 		Expect(*p.Lines[1].Start).To(BeEquivalentTo(3000))
 	})
 
+	It("reads the language of an [la:] tag", func() {
+		Expect(Parse("[la:fr]\n[00:01.00]Salut").Lang).To(Equal("fr"))
+		Expect(Parse("[la: eng ]\nUntimed").Lang).To(Equal("eng"))
+		Expect(Parse("[00:01.00]No tag").Lang).To(BeEmpty())
+	})
+
 	It("keeps a section header in plain lyrics and drops the ID tags", func() {
 		p := Parse("[ar: Rihanna]\n[ti:Work]\n[Chorus: Rihanna]\nwork work\n")
 		values := make([]string, 0, len(p.Lines))
@@ -59,6 +65,21 @@ var _ = Describe("Parse", Label("unit"), func() {
 		}
 		Expect(values).To(Equal([]string{"[Chorus: Rihanna]", "work work"}))
 	})
+})
+
+var _ = Describe("NormalizeLang", Label("unit"), func() {
+	It(
+		"keeps an ISO 639 code, lowercased, and answers xxx for anything else",
+		func() {
+			Expect(NormalizeLang("eng")).To(Equal("eng"))
+			Expect(NormalizeLang(" FR ")).To(Equal("fr"))
+			Expect(NormalizeLang("und")).To(Equal("und"))
+			Expect(NormalizeLang("XXX")).To(Equal("xxx"))
+			for _, raw := range []string{"", "e", "english", "en-US", "e1g", "日本"} {
+				Expect(NormalizeLang(raw)).To(Equal(UnknownLang), raw)
+			}
+		},
+	)
 })
 
 var _ = Describe("FromProbe", Label("unit"), func() {
@@ -75,6 +96,17 @@ var _ = Describe("FromProbe", Label("unit"), func() {
 	It("looks in the stream's tags too", func() {
 		out := `{"streams":[{"tags":{"unsyncedlyrics":"words"}}]}`
 		Expect(FromProbe([]byte(out))).To(Equal("words"))
+	})
+
+	It("lists every lyrics tag with the language its key names", func() {
+		out := `{"format":{"tags":{"lyrics-fra":"Bonjour","lyrics-eng":"Hello",
+			"LYRICS":"Plain"}},"streams":[{"tags":{"lyrics-eng":"Hello"}}]}`
+		Expect(TagsFromProbe([]byte(out))).To(Equal([]Tag{
+			{Lang: "", Text: "Plain"},
+			{Lang: "eng", Text: "Hello"},
+			{Lang: "fra", Text: "Bonjour"},
+		}))
+		Expect(FromProbe([]byte(out))).To(Equal("Plain"))
 	})
 
 	It("answers nothing for no tag, a blank one or output that is not JSON", func() {
