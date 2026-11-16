@@ -87,8 +87,26 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 		u = app.subsonicUser("queue")
 	})
 
+	// emptyQueue checks the queue an account has when nothing is saved: the
+	// element is still there, with no entry and no current one.
+	emptyQueue := func(endpoint, key, current string) {
+		GinkgoHelper()
+		q := obj(u.call(endpoint, nil), key)
+		Expect(q["username"]).To(Equal(u.Email))
+		Expect(q["changed"]).To(Equal("1970-01-01T00:00:00Z"))
+		Expect(q).To(HaveKeyWithValue("changedBy", ""))
+		Expect(list(q, "entry")).To(BeEmpty())
+		Expect(q).NotTo(HaveKey(current))
+		Expect(q["position"]).To(BeEquivalentTo(0))
+	}
+
+	It("answers an empty queue when nothing is saved", func() {
+		emptyQueue("getPlayQueue", "playQueue", "current")
+		emptyQueue("getPlayQueueByIndex", "playQueueByIndex", "currentIndex")
+	})
+
 	It("saves and restores the queue by id and by index", func() {
-		Expect(u.call("getPlayQueue", nil)).NotTo(HaveKey("playQueue"))
+		emptyQueue("getPlayQueue", "playQueue", "current")
 
 		// noFile has no file, so the saved queue is reduced to playable entries.
 		other := app.sharedLibrary().track(0, 0, 1)
@@ -121,22 +139,39 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 		Expect(q["current"]).To(Equal(trackRef(withFile)))
 
 		u.call("savePlayQueue", nil)
-		Expect(u.call("getPlayQueue", nil)).NotTo(HaveKey("playQueue"))
-		Expect(u.call("getPlayQueueByIndex", nil)).
-			NotTo(HaveKey("playQueueByIndex"))
+		emptyQueue("getPlayQueue", "playQueue", "current")
+		emptyQueue("getPlayQueueByIndex", "playQueueByIndex", "currentIndex")
+
+		u.call("savePlayQueue", url.Values{"id": {trackRef(withFile)}})
+		u.call("savePlayQueueByIndex", nil)
+		emptyQueue("getPlayQueue", "playQueue", "current")
 	})
 
 	It("refuses a current entry that is not in the queue", func() {
 		Expect(errorCode(u.callError("savePlayQueue", url.Values{
 			"id": {trackRef(withFile)}, "current": {trackRef(noFile)},
 		}))).To(Equal(0))
-		Expect(errorCode(u.callError("savePlayQueueByIndex", url.Values{
-			"id": {trackRef(withFile)}, "currentIndex": {"3"},
-		}))).To(Equal(0))
 		Expect(errorCode(u.callError("savePlayQueue", url.Values{
 			"id": {trackRef(withFile)}, "position": {"-1"},
 		}))).To(Equal(0))
 	})
+
+	It(
+		"refuses a currentIndex outside the queue, or missing, with error 10",
+		func() {
+			two := url.Values{"id": {trackRef(withFile), trackRef(withFile)}}
+			for _, index := range []string{"2", "-1", "x", "1.5"} {
+				q := url.Values{"id": two["id"], "currentIndex": {index}}
+				Expect(errorCode(u.callError("savePlayQueueByIndex", q))).
+					To(Equal(10), index)
+			}
+			Expect(errorCode(u.callError("savePlayQueueByIndex", two))).To(Equal(10))
+			Expect(errorCode(u.callError("savePlayQueueByIndex", url.Values{
+				"currentIndex": {"0"},
+			}))).To(Equal(10))
+			emptyQueue("getPlayQueue", "playQueue", "current")
+		},
+	)
 
 	It("refuses an id that is malformed, of another kind or gone", func() {
 		for _, id := range []string{"junk", "al-1", "pl-1", "tr-999999"} {
@@ -147,7 +182,7 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 		Expect(errorCode(u.callError("savePlayQueue", url.Values{
 			"id": {trackRef(withFile)}, "current": {"junk"},
 		}))).To(Equal(70))
-		Expect(u.call("getPlayQueue", nil)).NotTo(HaveKey("playQueue"))
+		emptyQueue("getPlayQueue", "playQueue", "current")
 	})
 
 	It("moves the current entry past one that has no file", func() {
@@ -160,30 +195,50 @@ var _ = Describe("the play queue", Label("e2e"), func() {
 		Expect(ids(list(qi, "entry"))).To(Equal([]string{trackRef(withFile)}))
 	})
 
-	It("drops an entry whose file went missing", func() {
+	It("moves the current entry off one whose file went missing", func() {
 		lib := app.seedLibrary()
-		a, b := lib.track(0, 0, 0), lib.track(0, 0, 1)
+		a, b, c := lib.track(0, 0, 0), lib.track(0, 0, 1), lib.track(0, 0, 2)
+		missing := func(t seededTrack) {
+			GinkgoHelper()
+			_, err := app.core.Exec(
+				"UPDATE media_files SET missing_since = ? WHERE id = ?",
+				coreTime(time.Now()), t.FileID,
+			)
+			Expect(err).NotTo(HaveOccurred())
+		}
 		u.call("savePlayQueueByIndex", url.Values{
-			"id":           {trackRef(a), trackRef(b)},
+			"id":           {trackRef(a), trackRef(b), trackRef(c)},
 			"currentIndex": {"1"},
 			"position":     {"500"},
 		})
-		_, err := app.core.Exec(
-			"UPDATE media_files SET missing_since = ? WHERE id = ?",
-			coreTime(time.Now()), b.FileID,
-		)
-		Expect(err).NotTo(HaveOccurred())
+		missing(b)
 
+		// The queue resumes at the start of the song after the lost one.
 		q := obj(u.call("getPlayQueue", nil), "playQueue")
+		Expect(ids(list(q, "entry"))).To(Equal([]string{trackRef(a), trackRef(c)}))
+		Expect(q["current"]).To(Equal(trackRef(c)))
+		Expect(q["position"]).To(BeEquivalentTo(0))
+		qi := obj(u.call("getPlayQueueByIndex", nil), "playQueueByIndex")
+		Expect(qi["currentIndex"]).To(BeEquivalentTo(1))
+
+		// With nothing after it, at the start of the last one.
+		u.call("savePlayQueueByIndex", url.Values{
+			"id":           {trackRef(a), trackRef(c)},
+			"currentIndex": {"1"},
+			"position":     {"500"},
+		})
+		missing(c)
+		q = obj(u.call("getPlayQueue", nil), "playQueue")
 		Expect(ids(list(q, "entry"))).To(Equal([]string{trackRef(a)}))
-		Expect(q).NotTo(HaveKey("current"))
+		Expect(q["current"]).To(Equal(trackRef(a)))
 		Expect(q["position"]).To(BeEquivalentTo(0))
 	})
 
 	It("never shows one user's queue to another", func() {
 		other := app.subsonicUser("queue-other")
 		u.call("savePlayQueue", url.Values{"id": {trackRef(withFile)}})
-		Expect(other.call("getPlayQueue", nil)).NotTo(HaveKey("playQueue"))
+		Expect(list(obj(other.call("getPlayQueue", nil), "playQueue"), "entry")).
+			To(BeEmpty())
 
 		other.call("savePlayQueue", url.Values{"id": {trackRef(withFile)}})
 		other.call("savePlayQueue", nil)

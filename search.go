@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/datahearth/streamline/extensions/sdk"
+	"github.com/streamline-hq/streamline-subsonic/envelope"
 )
 
 func init() {
@@ -44,9 +45,14 @@ type searchHits struct {
 	songs   []child
 }
 
-// searchAll is the shared body of search2 and search3.
+// searchAll is the shared body of search2 and search3. query is required:
+// an empty one (query= or query="") lists everything, as OpenSubsonic asks,
+// but none at all is error 10.
 func searchAll(c *reqCtx) (searchHits, error) {
 	var out searchHits
+	if !c.params.Has("query") {
+		return out, envelope.MissingParam("query")
+	}
 	if browseOtherFolder(c) {
 		return out, nil
 	}

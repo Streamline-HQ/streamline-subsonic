@@ -242,7 +242,9 @@ var _ = Describe("ratings", Label("e2e"), func() {
 		Expect(list(got, "artist")[0]["userRating"]).To(BeEquivalentTo(5))
 
 		u.call("setRating", url.Values{"id": {markAlbum(album)}, "rating": {"0"}})
-		Expect(list(marksStarred2(u), "album")[0]).NotTo(HaveKey("userRating"))
+		Expect(
+			list(marksStarred2(u), "album")[0]["userRating"],
+		).To(BeEquivalentTo(0))
 		Expect(list(marksStarred2(u), "album")[0]["starred"]).NotTo(BeEmpty())
 	})
 

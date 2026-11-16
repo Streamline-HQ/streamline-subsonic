@@ -340,10 +340,12 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 		Expect(raw.Body).To(Equal(want))
 	})
 
-	It("serves an artist's photo, and a plain 404 when it has none", func() {
+	It("serves an artist's photo, and error 70 when it has none", func() {
 		artist := lib.Artists[1]
-		raw := u.get("getCoverArt", url.Values{"id": {"ar-" + itoa(artist.ID)}})
-		Expect(raw.Status).To(Equal(http.StatusNotFound))
+		wantCode(
+			u.get("getCoverArt", url.Values{"id": {"ar-" + itoa(artist.ID)}}),
+			70,
+		)
 
 		src, err := os.ReadFile(poster("albums", lib.Artists[0].Albums[0].ID))
 		Expect(err).NotTo(HaveOccurred())
@@ -351,16 +353,19 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 			To(Succeed())
 		Expect(os.WriteFile(poster("artists", artist.ID), src, 0o600)).To(Succeed())
 		DeferCleanup(os.RemoveAll, filepath.Dir(poster("artists", artist.ID)))
-		raw = u.get("getCoverArt", url.Values{"id": {"ar-" + itoa(artist.ID)}})
+		raw := u.get("getCoverArt", url.Values{"id": {"ar-" + itoa(artist.ID)}})
 		Expect(raw.Status).To(Equal(http.StatusOK))
 		Expect(raw.Body).To(Equal(src))
 	})
 
-	It("answers a plain 404 for an album with no poster", func() {
+	It("answers error 70 for an album with no poster", func() {
 		raw := u.get("getCoverArt", url.Values{
 			"id": {"al-" + itoa(lib.Artists[1].Albums[0].ID)},
+			"f":  {"xml"},
 		})
-		Expect(raw.Status).To(Equal(http.StatusNotFound))
+		Expect(raw.Status).To(Equal(http.StatusOK))
+		Expect(raw.Header.Get("Content-Type")).To(HavePrefix("text/xml"))
+		Expect(string(raw.Body)).To(ContainSubstring(`code="70"`))
 	})
 
 	It("never serves a body that is not an image as one", func() {
@@ -387,10 +392,9 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 		wantCode(u.get("getCoverArt", url.Values{"id": {"rs-1"}}), 70)
 	})
 
-	It("answers a plain 404 for an album or artist that is gone", func() {
+	It("answers error 70 for an album or artist that is gone", func() {
 		for _, id := range []string{"al-999999", "ar-999999"} {
-			raw := u.get("getCoverArt", url.Values{"id": {id}})
-			Expect(raw.Status).To(Equal(http.StatusNotFound), id)
+			wantCode(u.get("getCoverArt", url.Values{"id": {id}}), 70)
 		}
 	})
 })

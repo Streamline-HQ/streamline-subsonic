@@ -406,9 +406,33 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			)
 			got = obj(u.call("getSong",
 				url.Values{"id": {browseTr(band.WithFile.ID)}}), "song")
-			Expect(got).NotTo(HaveKey("bitDepth"))
-			Expect(got).NotTo(HaveKey("samplingRate"))
+			Expect(got).To(HaveKeyWithValue("bitDepth", BeEquivalentTo(0)))
+			Expect(got).To(HaveKeyWithValue("samplingRate", BeEquivalentTo(0)))
 		})
+
+		It(
+			"sends the OpenSubsonic fields it supports even when they are empty",
+			func() {
+				fresh := app.subsonicUser("browse-fields")
+				song := obj(fresh.call("getSong",
+					url.Values{"id": {browseTr(band.WithFile.ID)}}), "song")
+				Expect(song).To(HaveKeyWithValue("played", ""))
+				Expect(song).To(HaveKey("musicBrainzId"))
+				Expect(song).To(HaveKey("bitDepth"))
+				Expect(song).To(HaveKey("samplingRate"))
+
+				album := obj(fresh.call("getAlbum",
+					url.Values{"id": {browseAl(band.albumID())}}), "album")
+				Expect(album).To(HaveKeyWithValue("played", ""))
+				Expect(album).To(HaveKeyWithValue("userRating", BeEquivalentTo(0)))
+				Expect(album).To(HaveKey("musicBrainzId"))
+
+				artist := obj(fresh.call("getArtist",
+					url.Values{"id": {browseAr(band.Artist.ID)}}), "artist")
+				Expect(artist).To(HaveKey("musicBrainzId"))
+				Expect(artist).To(HaveKey("sortName"))
+			},
+		)
 
 		It("answers getSong, and 70 for a track with no file", func() {
 			got := obj(u.call("getSong",
@@ -590,9 +614,32 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 	})
 
 	Describe("album lists", func() {
-		It("serves them by type and falls back to alphabetical", func() {
+		It(
+			"refuses a missing type, one it does not know and an unreadable year",
+			func() {
+				for _, endpoint := range []string{"getAlbumList", "getAlbumList2"} {
+					Expect(
+						errorCode(u.callError(endpoint, nil)),
+					).To(Equal(10), endpoint)
+					Expect(errorCode(u.callError(endpoint, url.Values{
+						"type": {"bogus"},
+					}))).To(Equal(0), endpoint)
+					Expect(errorCode(u.callError(endpoint, url.Values{
+						"type": {"bogus"}, "musicFolderId": {"2"},
+					}))).To(Equal(0), endpoint)
+					Expect(errorCode(u.callError(endpoint, url.Values{
+						"type": {"byYear"}, "fromYear": {"abc"}, "toYear": {"2020"},
+					}))).To(Equal(0), endpoint)
+				}
+				Expect(errorCode(u.callError("getRandomSongs", url.Values{
+					"toYear": {"soon"},
+				}))).To(Equal(0))
+			},
+		)
+
+		It("serves them by type", func() {
 			app.sharedLibrary()
-			for _, typ := range []string{"newest", "alphabeticalByName", "random", "bogus"} {
+			for _, typ := range []string{"newest", "alphabeticalByName", "random"} {
 				albums := list(obj(u.call("getAlbumList2", url.Values{
 					"type": {typ}, "size": {"1"},
 				}), "albumList2"), "album")
@@ -925,6 +972,18 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			)
 			Expect(list(res, "artist")).NotTo(BeEmpty())
 			Expect(list(res, "song")).NotTo(BeEmpty())
+
+			res = obj(
+				u.call("search2", url.Values{"query": {""}}),
+				"searchResult2",
+			)
+			Expect(list(res, "artist")).NotTo(BeEmpty())
+		})
+
+		It("asks for the query when there is none at all", func() {
+			for _, endpoint := range []string{"search2", "search3"} {
+				Expect(errorCode(u.callError(endpoint, nil))).To(Equal(10), endpoint)
+			}
 		})
 
 		It("restricts the old search to tracks added since newerThan", func() {

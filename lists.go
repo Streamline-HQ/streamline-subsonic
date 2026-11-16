@@ -1,6 +1,9 @@
 package main
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/datahearth/streamline/extensions/sdk"
 	"github.com/streamline-hq/streamline-subsonic/envelope"
 )
@@ -24,6 +27,31 @@ func listsYearRange(from, to int) (lo, hi int, reversed bool) {
 	return from, to, false
 }
 
+// listsYearParam reads a year parameter: error 10 when required and absent,
+// error 0 when it is not a number. present is false for an absent optional
+// one.
+func listsYearParam(
+	c *reqCtx,
+	name string,
+	required bool,
+) (year int, present bool, err error) {
+	raw := strings.TrimSpace(c.param(name))
+	if raw == "" {
+		if required {
+			return 0, false, envelope.MissingParam(name)
+		}
+		return 0, false, nil
+	}
+	n, convErr := strconv.Atoi(raw)
+	if convErr != nil {
+		return 0, false, &envelope.Error{
+			Code:    envelope.CodeGeneric,
+			Message: "Not a year: " + name,
+		}
+	}
+	return min(max(n, 0), 9999), true, nil
+}
+
 // listsMarked orders the caller's albums by what they did to them.
 func listsMarked(c *reqCtx, cond, order string, size, offset int) browseAlbumQuery {
 	return browseAlbumQuery{
@@ -37,17 +65,18 @@ func listsMarked(c *reqCtx, cond, order string, size, offset int) browseAlbumQue
 	}
 }
 
-// listsAlbums serves both getAlbumList and getAlbumList2.
+// listsAlbums serves both getAlbumList and getAlbumList2. type is required
+// and one of the list types the API names: error 10 when absent, error 0 for
+// any other value.
 func listsAlbums(c *reqCtx) ([]browseAlbum, error) {
-	if browseOtherFolder(c) {
-		return nil, nil
-	}
 	size := c.intParam("size", browseListSize, 1, browseMaxList)
 	offset := c.intParam("offset", 0, 0, browseMaxOffset)
 	q := browseAlbumQuery{
 		where: browseListedAlbum("al"), limit: size, offset: offset,
 	}
 	switch c.param("type") {
+	case "":
+		return nil, envelope.MissingParam("type")
 	case "random":
 		q.order = "RANDOM()"
 	case "newest":
@@ -60,16 +89,15 @@ func listsAlbums(c *reqCtx) ([]browseAlbum, error) {
 	case "alphabeticalByArtist":
 		q.order = "ar.name, al.release_date, al.title, al.id"
 	case "byYear":
-		if c.param("fromYear") == "" {
-			return nil, envelope.MissingParam("fromYear")
+		from, _, err := listsYearParam(c, "fromYear", true)
+		if err != nil {
+			return nil, err
 		}
-		if c.param("toYear") == "" {
-			return nil, envelope.MissingParam("toYear")
+		to, _, err := listsYearParam(c, "toYear", true)
+		if err != nil {
+			return nil, err
 		}
-		lo, hi, reversed := listsYearRange(
-			c.intParam("fromYear", 0, 0, 9999),
-			c.intParam("toYear", 0, 0, 9999),
-		)
+		lo, hi, reversed := listsYearRange(from, to)
 		q.where += " AND al.release_date IS NOT NULL AND " + listsYear +
 			" BETWEEN ? AND ?"
 		q.args = []any{lo, hi}
@@ -117,8 +145,16 @@ func listsAlbums(c *reqCtx) ([]browseAlbum, error) {
 			size,
 			offset,
 		)
-	default: // alphabeticalByName, and anything this server does not know
+	case "alphabeticalByName":
 		q.order = "al.title, al.id"
+	default:
+		return nil, &envelope.Error{
+			Code:    envelope.CodeGeneric,
+			Message: "Unknown album list type",
+		}
+	}
+	if browseOtherFolder(c) {
+		return nil, nil
 	}
 	return browseAlbums(q)
 }
@@ -140,6 +176,14 @@ func getAlbumList2(c *reqCtx) sdk.Response {
 }
 
 func getRandomSongs(c *reqCtx) sdk.Response {
+	from, hasFrom, err := listsYearParam(c, "fromYear", false)
+	if err != nil {
+		return c.failErr(err)
+	}
+	to, hasTo, err := listsYearParam(c, "toYear", false)
+	if err != nil {
+		return c.failErr(err)
+	}
 	out := &songs{Song: []child{}}
 	if browseOtherFolder(c) {
 		return c.respond(&body{RandomSongs: out})
@@ -153,13 +197,13 @@ func getRandomSongs(c *reqCtx) sdk.Response {
 		q.where += " AND lower(ar.genre) = lower(?)"
 		q.args = append(q.args, g)
 	}
-	if c.param("fromYear") != "" {
+	if hasFrom {
 		q.where += " AND al.release_date IS NOT NULL AND " + listsYear + " >= ?"
-		q.args = append(q.args, c.intParam("fromYear", 0, 0, 9999))
+		q.args = append(q.args, from)
 	}
-	if c.param("toYear") != "" {
+	if hasTo {
 		q.where += " AND al.release_date IS NOT NULL AND " + listsYear + " <= ?"
-		q.args = append(q.args, c.intParam("toYear", 9999, 0, 9999))
+		q.args = append(q.args, to)
 	}
 	songs, err := songChildren(q)
 	if err != nil {

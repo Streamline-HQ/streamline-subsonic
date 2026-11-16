@@ -37,6 +37,9 @@ func (l Lyrics) Plain() string {
 
 var (
 	timeStamp = regexp.MustCompile(`^\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]`)
+	// wordStamp is the per-word time of enhanced (A2) LRC, "<mm:ss.xx>";
+	// the line keeps only its words.
+	wordStamp = regexp.MustCompile(`<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>`)
 	// The LRC ID tags only: a section header such as "[Chorus: Rihanna]" in
 	// plain lyrics is text and stays.
 	idTag = regexp.MustCompile(
@@ -67,6 +70,7 @@ func Parse(text string) Lyrics {
 			rest = strings.TrimSpace(rest[len(m[0]):])
 		}
 		if len(stamps) > 0 {
+			rest = stripWordStamps(rest)
 			for _, ms := range stamps {
 				start := ms
 				timed = append(timed, Line{Start: &start, Value: rest})
@@ -105,6 +109,16 @@ func Parse(text string) Lyrics {
 		untimed = untimed[:len(untimed)-1]
 	}
 	return Lyrics{Lines: untimed}
+}
+
+// stripWordStamps drops enhanced LRC word times from a line, and the spaces
+// they leave doubled. A time inside a word marks a syllable, so it joins the
+// two halves rather than splitting them.
+func stripWordStamps(line string) string {
+	if !wordStamp.MatchString(line) {
+		return line
+	}
+	return strings.Join(strings.Fields(wordStamp.ReplaceAllString(line, "")), " ")
 }
 
 func millis(m []string) int64 {

@@ -18,8 +18,9 @@ import (
 const playlistCoverDir = "playlist-covers"
 
 // servePlaylistCover answers getCoverArt for a playlist id: the covers of its
-// first four distinct albums as a 2x2 grid. A playlist of one album, or whose
-// other covers are missing or undecodable, gets that album's cover as it is.
+// first four distinct albums that have one, as a 2x2 grid. A playlist with
+// fewer than two decodable covers gets the first album cover it has, as it is.
+// One with no cover at all is error 70, as for an album.
 // getCoverArt calls it for an id of kind "pl".
 func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 	p, err := c.loadPlaylist(id)
@@ -41,11 +42,11 @@ func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 	albums := playlistAlbums(entries)
 	artwork, ok := c.req.Folder("artwork")
 	if !ok {
-		return notFoundResponse()
+		return c.failErr(envelope.NotFound())
 	}
 	covers := playlistCoverFiles(artwork.GuestPath, albums)
 	if len(covers) == 0 {
-		return notFoundResponse()
+		return c.failErr(envelope.NotFound())
 	}
 	cached, cachePath := playlistCachedCover(c, covers)
 	if cached != nil {
@@ -53,12 +54,18 @@ func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 	}
 
 	var squares []image.Image
+	// asIs is the cover served when no grid can be drawn: the first one that
+	// decodes, or the first one at all.
+	asIs := covers[0].path
 	for _, f := range covers {
 		data, err := os.ReadFile(f.path)
 		if err != nil {
 			continue
 		}
 		if sq, decoded := mosaic.Square(data); decoded {
+			if len(squares) == 0 {
+				asIs = f.path
+			}
 			squares = append(squares, sq)
 			if len(squares) == mosaic.MaxCovers {
 				break
@@ -70,7 +77,7 @@ func servePlaylistCover(c *reqCtx, id uint32) sdk.Response {
 		return c.failErr(err)
 	}
 	if !drawn {
-		return playlistAsIs(albums[0], artwork.GuestPath)
+		return playlistAsIs(c, asIs)
 	}
 	if cachePath != "" {
 		playlistStoreCover(cachePath, grid)
@@ -181,23 +188,27 @@ func playlistStoreCover(cachePath string, grid []byte) {
 	}
 }
 
-// playlistAsIs serves the first album's own cover, unredrawn.
-func playlistAsIs(albumID uint32, artworkRoot string) sdk.Response {
-	data, err := os.ReadFile(playlistCoverPath(artworkRoot, albumID))
+// playlistAsIs serves an album cover of the playlist, unredrawn, typed as
+// mediaPoster types it.
+func playlistAsIs(c *reqCtx, coverPath string) sdk.Response {
+	data, err := os.ReadFile(coverPath) //nolint:gosec // under the artwork folder
 	if err != nil {
-		return notFoundResponse()
+		return c.failErr(envelope.NotFound())
 	}
-	return sdk.Response{
-		Status:  http.StatusOK,
-		Headers: map[string][]string{"Content-Type": {http.DetectContentType(data)}},
-		Body:    data,
-	}
+	return coverResponse(coverContentType(data), data)
 }
 
 func jpegResponse(data []byte) sdk.Response {
+	return coverResponse("image/jpeg", data)
+}
+
+func coverResponse(contentType string, data []byte) sdk.Response {
 	return sdk.Response{
-		Status:  http.StatusOK,
-		Headers: map[string][]string{"Content-Type": {"image/jpeg"}},
-		Body:    data,
+		Status: http.StatusOK,
+		Headers: map[string][]string{
+			"Content-Type":  {contentType},
+			"Cache-Control": {coverCacheControl},
+		},
+		Body: data,
 	}
 }

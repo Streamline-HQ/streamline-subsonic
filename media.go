@@ -220,29 +220,33 @@ func mediaCoverArt(c *reqCtx) sdk.Response {
 	return c.failErr(envelope.NotFound())
 }
 
+// coverCacheControl lets an app keep a cover for a day. Private: the request
+// URL carries the caller's credentials.
+const coverCacheControl = "private, max-age=86400"
+
 // mediaPoster serves <artwork>/<kind>/<id>/poster.jpg, Streamline's cached
-// art, as stored. A row that is gone, or one with no art, is a plain 404, the
-// cue for a client to draw its own placeholder.
+// art, as stored. A row that is gone, or one with no art, is error 70, the
+// Subsonic error document the spec asks for, on which a client draws its own
+// placeholder.
 func mediaPoster(c *reqCtx, kind, table string, id uint32) sdk.Response {
 	_, found, err := queryRow("SELECT id FROM "+table+" WHERE id = ?", id)
 	if err != nil {
 		return c.failErr(err)
 	}
 	if !found {
-		return notFoundResponse()
+		return c.failErr(envelope.NotFound())
 	}
 	folder, ok := c.req.Folder("artwork")
 	if !ok {
-		return notFoundResponse()
+		return c.failErr(envelope.NotFound())
 	}
 	rel := path.Join(kind, strconv.FormatUint(uint64(id), 10), "poster.jpg")
 	contentType, ok := posterContentType(path.Join(folder.GuestPath, rel))
 	if !ok {
-		return notFoundResponse()
+		return c.failErr(envelope.NotFound())
 	}
 	return sdk.Response{
-		// Private: the request URL carries the caller's credentials.
-		Headers: map[string][]string{"Cache-Control": {"private, max-age=86400"}},
+		Headers: map[string][]string{"Cache-Control": {coverCacheControl}},
 		SendFile: &sdk.SendFile{
 			Path:        path.Join(folder.HostPath, rel),
 			ContentType: contentType,
@@ -265,11 +269,17 @@ func posterContentType(guestPath string) (contentType string, ok bool) {
 	if err != nil && n == 0 {
 		return "", false
 	}
-	contentType = http.DetectContentType(head[:n])
+	return coverContentType(head[:n]), true
+}
+
+// coverContentType is the sniffed type of a cover's first bytes, image/jpeg
+// for anything that does not sniff as an image.
+func coverContentType(head []byte) string {
+	contentType := http.DetectContentType(head)
 	if !strings.HasPrefix(contentType, "image/") {
-		contentType = "image/jpeg"
+		return "image/jpeg"
 	}
-	return contentType, true
+	return contentType
 }
 
 // mediaAvatar has nothing to serve: Streamline keeps no user pictures.

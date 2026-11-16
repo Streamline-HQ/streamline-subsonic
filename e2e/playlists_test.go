@@ -459,16 +459,39 @@ var _ = Describe("playlists", Label("e2e"), func() {
 			raw := cover(p["id"].(string))
 			Expect(raw.Status).To(Equal(http.StatusOK))
 			Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
+			Expect(raw.Header.Get("Cache-Control")).
+				To(Equal("private, max-age=86400"))
 			Expect(raw.Body).NotTo(Equal(single))
 			_, err = jpeg.Decode(bytes.NewReader(raw.Body))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("answers 404 when no album has a cover", func() {
+		It("serves the first cover it has when the first album has none", func() {
+			indigo := lib.track(1, 0, 0)
+			p := createPlaylistFor(u, "Late", trackRef(indigo), trackRef(dawn))
+			want, err := os.ReadFile(filepath.Join(
+				app.ArtworkDir,
+				"albums",
+				itoa(lib.Artists[0].Albums[0].ID),
+				"poster.jpg",
+			))
+			Expect(err).NotTo(HaveOccurred())
+
+			raw := cover(p["id"].(string))
+			Expect(raw.Status).To(Equal(http.StatusOK))
+			Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
+			Expect(raw.Header.Get("Cache-Control")).
+				To(Equal("private, max-age=86400"))
+			Expect(raw.Body).To(Equal(want))
+		})
+
+		It("answers error 70 when no album has a cover", func() {
 			indigo := lib.track(1, 0, 0)
 			p := createPlaylistFor(u, "Bare", trackRef(indigo))
 
-			Expect(cover(p["id"].(string)).Status).To(Equal(http.StatusNotFound))
+			raw := cover(p["id"].(string))
+			Expect(raw.Status).To(Equal(http.StatusOK))
+			Expect(errorCode(obj(raw.json(), "error"))).To(Equal(70))
 		})
 	})
 })

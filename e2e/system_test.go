@@ -299,6 +299,27 @@ var _ = Describe("authentication", Label("e2e"), func() {
 		Expect(errObj["message"]).To(Equal("Required parameter is missing: u"))
 	})
 
+	It("answers an API key with error 42, as it offers none", func() {
+		raw := rest("ping", url.Values{"apiKey": {"some-key"}, "f": {"json"}})
+		errObj := raw.json()["error"].(map[string]any)
+		Expect(errorCode(errObj)).To(Equal(42))
+		Expect(errObj["message"]).
+			To(Equal("Provided authentication mechanism not supported"))
+	})
+
+	It("answers two mechanisms at once with error 43", func() {
+		for _, q := range []url.Values{
+			{"apiKey": {"some-key"}, "u": {u.Email}},
+			{"apiKey": {"some-key"}, "u": {u.Email}, "p": {u.Password}},
+			u.signed(url.Values{"apiKey": {"some-key"}}),
+			u.signed(url.Values{"p": {u.Password}}),
+		} {
+			q.Set("f", "json")
+			errObj := rest("ping", q).json()["error"].(map[string]any)
+			Expect(errorCode(errObj)).To(Equal(43), q.Encode())
+		}
+	})
+
 	It("authenticates before it looks for the endpoint", func() {
 		wrongCredentials(rest("noSuchEndpoint", url.Values{
 			"u": {u.Email}, "p": {"nope"}, "f": {"json"},

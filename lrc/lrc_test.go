@@ -36,6 +36,21 @@ var _ = Describe("Parse", Label("unit"), func() {
 		Expect(*p.Lines[1].Start).To(BeEquivalentTo(2250))
 	})
 
+	It("drops the word times of enhanced LRC and keeps the words", func() {
+		p := Parse("[00:01.00] <00:01.00> When <00:01.40> the <00:01.90>\n" +
+			"[00:03.00]<00:03.00>Hel<00:03.20>lo<00:03.50> world\n" +
+			"[00:05.00]Plain  spacing <kept>\n")
+		Expect(p.Synced).To(BeTrue())
+		values := make([]string, 0, len(p.Lines))
+		for _, l := range p.Lines {
+			values = append(values, l.Value)
+		}
+		Expect(values).To(Equal([]string{
+			"When the", "Hello world", "Plain  spacing <kept>",
+		}))
+		Expect(*p.Lines[1].Start).To(BeEquivalentTo(3000))
+	})
+
 	It("keeps a section header in plain lyrics and drops the ID tags", func() {
 		p := Parse("[ar: Rihanna]\n[ti:Work]\n[Chorus: Rihanna]\nwork work\n")
 		values := make([]string, 0, len(p.Lines))

@@ -17,6 +17,36 @@ import (
 
 const clientMaxLen = 64
 
+// Scheme is the authentication mechanism a request carries.
+type Scheme int
+
+const (
+	// SchemeUser is u with p, or u with t and s: the ones Check verifies.
+	// Missing credentials land here too, for Check to refuse.
+	SchemeUser Scheme = iota
+	// SchemeAPIKey is the OpenSubsonic apiKey alone, which this server does
+	// not offer.
+	SchemeAPIKey
+	// SchemeConflict is more than one mechanism at once: apiKey with any of
+	// u, p, t, s, or p with t or s.
+	SchemeConflict
+)
+
+// Detect names the mechanism params carry. An empty value counts as absent.
+func Detect(params url.Values) Scheme {
+	has := func(name string) bool { return params.Get(name) != "" }
+	token := has("t") || has("s")
+	switch {
+	case has("apiKey") && (has("u") || has("p") || token):
+		return SchemeConflict
+	case has("apiKey"):
+		return SchemeAPIKey
+	case has("p") && token:
+		return SchemeConflict
+	}
+	return SchemeUser
+}
+
 // Check validates the auth parameters of a request against the stored
 // password: the token form t=md5(password+salt), or the legacy p= in plain or
 // "enc:"+hex. An empty stored password disables access entirely.

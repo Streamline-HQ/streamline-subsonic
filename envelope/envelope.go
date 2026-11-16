@@ -18,8 +18,14 @@ const (
 	CodeGeneric          = 0
 	CodeMissingParam     = 10
 	CodeWrongCredentials = 40
-	CodeNotAuthorized    = 50
-	CodeNotFound         = 70
+	// CodeAuthNotSupported answers an authentication mechanism this server
+	// does not offer (the OpenSubsonic apiKey).
+	CodeAuthNotSupported = 42
+	// CodeConflictingAuth answers a request carrying more than one
+	// authentication mechanism.
+	CodeConflictingAuth = 43
+	CodeNotAuthorized   = 50
+	CodeNotFound        = 70
 )
 
 const (
@@ -60,6 +66,20 @@ func WrongCredentials() *Error {
 	return &Error{
 		Code:    CodeWrongCredentials,
 		Message: "Wrong username or password",
+	}
+}
+
+func AuthNotSupported() *Error {
+	return &Error{
+		Code:    CodeAuthNotSupported,
+		Message: "Provided authentication mechanism not supported",
+	}
+}
+
+func ConflictingAuth() *Error {
+	return &Error{
+		Code:    CodeConflictingAuth,
+		Message: "Multiple conflicting authentication mechanisms provided",
 	}
 }
 

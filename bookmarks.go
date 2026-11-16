@@ -150,26 +150,61 @@ func queueLoad(userID uint32) (saved queueSaved, found bool, err error) {
 		changed:    timestamp(head.time(3)),
 		current:    -1,
 	}
+	stored, next := int(head.int(0)), -1
 	for i, id := range trackIDs {
 		song, ok := songs[id]
 		if !ok {
 			continue
 		}
-		if i == int(head.int(0)) {
+		switch {
+		case i == stored:
 			saved.current = len(saved.entries)
+		case i > stored && next < 0:
+			next = len(saved.entries)
 		}
 		saved.entries = append(saved.entries, song)
+	}
+	// OpenSubsonic requires a current entry in any non-empty queue: when the
+	// stored one lost its file, the queue resumes at the start of the song
+	// after it, or of the last one when it was the end of the queue.
+	if saved.current < 0 && len(saved.entries) > 0 {
+		saved.positionMS = 0
+		saved.current = next
+		if next < 0 {
+			saved.current = len(saved.entries) - 1
+		}
 	}
 	return saved, true, nil
 }
 
-func getPlayQueue(c *reqCtx) sdk.Response {
+// queueNeverChanged is the changed date of a queue that was never saved: the
+// epoch, older than any queue a client holds, so none replaces its own with
+// the empty one.
+const queueNeverChanged = "1970-01-01T00:00:00Z"
+
+// queueCurrent reads the caller's queue for the two get endpoints. Nothing
+// saved is an empty queue, since both answers must carry the element.
+func queueCurrent(c *reqCtx) (queueSaved, error) {
 	q, found, err := queueLoad(c.user.ID)
 	if err != nil {
-		return c.failErr(err)
+		return queueSaved{}, err
 	}
 	if !found {
-		return c.ok(nil)
+		q = queueSaved{changed: queueNeverChanged, current: -1}
+	}
+	if q.entries == nil {
+		q.entries = []child{}
+	}
+	if q.current < 0 {
+		q.positionMS = 0
+	}
+	return q, nil
+}
+
+func getPlayQueue(c *reqCtx) sdk.Response {
+	q, err := queueCurrent(c)
+	if err != nil {
+		return c.failErr(err)
 	}
 	out := &playQueue{
 		Position:  q.positionMS,
@@ -180,19 +215,14 @@ func getPlayQueue(c *reqCtx) sdk.Response {
 	}
 	if q.current >= 0 {
 		out.Current = q.entries[q.current].ID
-	} else {
-		out.Position = 0
 	}
 	return c.respond(&body{PlayQueue: out})
 }
 
 func getPlayQueueByIndex(c *reqCtx) sdk.Response {
-	q, found, err := queueLoad(c.user.ID)
+	q, err := queueCurrent(c)
 	if err != nil {
 		return c.failErr(err)
-	}
-	if !found {
-		return c.ok(nil)
 	}
 	out := &playQueueByIndex{
 		Position:  q.positionMS,
@@ -204,8 +234,6 @@ func getPlayQueueByIndex(c *reqCtx) sdk.Response {
 	if q.current >= 0 {
 		cur := q.current
 		out.CurrentIndex = &cur
-	} else {
-		out.Position = 0
 	}
 	return c.respond(&body{PlayQueueByIndex: out})
 }
@@ -261,14 +289,32 @@ func savePlayQueueByIndex(c *reqCtx) sdk.Response {
 	if err != nil {
 		return c.failErr(err)
 	}
-	current := 0
-	if c.param("currentIndex") != "" {
-		current = c.intParam("currentIndex", -1, -1, len(trackIDs))
-		if current < 0 || current >= len(trackIDs) {
-			return c.fail(envelope.CodeGeneric, "currentIndex is out of range")
+	raw := c.param("currentIndex")
+	if len(trackIDs) == 0 {
+		// Clearing the queue: OpenSubsonic says currentIndex must not be set.
+		if raw != "" {
+			return c.failErr(queueIndexOutOfRange(0))
 		}
+		return queueStore(c, nil, 0)
+	}
+	if raw == "" {
+		return c.failErr(envelope.MissingParam("currentIndex"))
+	}
+	current, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || current < 0 || current >= len(trackIDs) {
+		return c.failErr(queueIndexOutOfRange(len(trackIDs)))
 	}
 	return queueStore(c, trackIDs, current)
+}
+
+// queueIndexOutOfRange is the error 10 OpenSubsonic asks for a currentIndex
+// outside the queue.
+func queueIndexOutOfRange(length int) *envelope.Error {
+	msg := "currentIndex must not be set for an empty queue"
+	if length > 0 {
+		msg = "currentIndex must be between 0 and " + strconv.Itoa(length-1)
+	}
+	return &envelope.Error{Code: envelope.CodeMissingParam, Message: msg}
 }
 
 // queueEntryChunk keeps one INSERT well under the bound-parameter limit.

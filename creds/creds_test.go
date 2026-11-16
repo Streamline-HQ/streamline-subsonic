@@ -60,6 +60,30 @@ var _ = g.Describe("credentials", g.Label("unit"), func() {
 		Expect(Check("sesame", url.Values{})).To(BeFalse())
 	})
 
+	g.It("names the mechanism a request carries", func() {
+		Expect(Detect(url.Values{"u": {"a"}, "p": {"x"}})).To(Equal(SchemeUser))
+		Expect(
+			Detect(url.Values{"u": {"a"}, "t": {"x"}, "s": {"y"}}),
+		).To(Equal(SchemeUser))
+		Expect(Detect(url.Values{})).To(Equal(SchemeUser))
+		Expect(Detect(url.Values{"apiKey": {"k"}})).To(Equal(SchemeAPIKey))
+		Expect(Detect(url.Values{"apiKey": {""}, "u": {"a"}})).To(Equal(SchemeUser))
+	})
+
+	g.It("names two mechanisms at once a conflict", func() {
+		for _, extra := range []string{"u", "p", "t", "s"} {
+			Expect(
+				Detect(url.Values{"apiKey": {"k"}, extra: {"v"}}),
+			).To(Equal(SchemeConflict), extra)
+		}
+		Expect(
+			Detect(url.Values{"u": {"a"}, "p": {"x"}, "t": {"y"}, "s": {"z"}}),
+		).To(Equal(SchemeConflict))
+		Expect(
+			Detect(url.Values{"u": {"a"}, "p": {"x"}, "s": {"z"}}),
+		).To(Equal(SchemeConflict))
+	})
+
 	g.It("generates passwords of letters and digits", func() {
 		a, err := Generate(24)
 		Expect(err).NotTo(HaveOccurred())
