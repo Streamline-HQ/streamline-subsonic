@@ -1,11 +1,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"math"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -71,6 +75,37 @@ func browseOfArtist(a string) string {
 	return "EXISTS (SELECT 1 FROM streamline_album_artists oa WHERE oa.album_id = " +
 		a + ".id AND oa.artist_id = ?)"
 }
+
+// browseGenreList is album a's genres as a JSON array: the release group's
+// top genres the core stores, an empty array when it holds none or anything
+// else than an array.
+func browseGenreList(a string) string {
+	return "(CASE WHEN json_valid(" + a + ".genres) AND json_type(" + a +
+		".genres) = 'array' THEN " + a + ".genres ELSE '[]' END)"
+}
+
+// browseAlbumGenre is the one genre an album or its songs show: the album's
+// first own genre, else the genre of artist ar it is filed under.
+func browseAlbumGenre(a, ar string) string {
+	return "COALESCE((SELECT gl.value FROM json_each(" + browseGenreList(a) +
+		") gl WHERE gl.type = 'text' AND gl.value <> '' ORDER BY gl.key LIMIT 1), " +
+		ar + ".genre, '')"
+}
+
+// browseHasGenre is true for an album al in the genre its two placeholders
+// name (pass the genre twice), whatever its case: one of the album's own
+// genres, or, for an album with none, the genre of an artist it is listed
+// under, owner or co-credited.
+var browseHasGenre = "(EXISTS (SELECT 1 FROM json_each(" + browseGenreList(
+	"al",
+) + ") gh " +
+	"WHERE gh.type = 'text' AND lower(gh.value) = lower(?)) OR (" +
+	"json_array_length(" + browseGenreList(
+	"al",
+) + ") = 0 AND EXISTS (" +
+	"SELECT 1 FROM streamline_album_artists ga " +
+	"JOIN streamline_artists gx ON gx.id = ga.artist_id " +
+	"WHERE ga.album_id = al.id AND lower(gx.genre) = lower(?))))"
 
 // browseOtherFolder reports a musicFolderId naming a folder this server does
 // not have: the library is the one folder, id 1.
@@ -190,7 +225,7 @@ type browseAlbumQuery struct {
 }
 
 var browseAlbumColumns = `al.id, al.mbid, al.title, al.release_date, al.added_at,
-	ar.id, ar.name, ar.genre,
+	ar.id, ar.name, ` + browseAlbumGenre("al", "ar") + `,
 	(SELECT count(t.id) FROM streamline_tracks t
 		WHERE t.album_id = al.id AND ` + browsePlayable("t") + `),
 	(SELECT COALESCE(sum(t.duration), 0) FROM streamline_tracks t
@@ -292,11 +327,33 @@ func browseAlbumChildren(als []browseAlbum) []child {
 	return out
 }
 
+// browseIgnoredArticles are the leading words the index files an artist
+// past, "The Beatles" under B, as getIndexes and getArtists advertise them.
+const browseIgnoredArticles = "The El La Los Las Le Les"
+
+// browseSortKey is what the index sorts and files an artist by: its sort
+// name, else its name, either without a leading article. A MusicBrainz sort
+// name has already moved it ("Beatles, The"), so this only matters for a
+// name or a sort name that still starts with one.
 func browseSortKey(a browseArtist) string {
-	if a.sortName != "" {
-		return a.sortName
+	key := a.sortName
+	if key == "" {
+		key = a.name
 	}
-	return a.name
+	return browseStripArticle(key)
+}
+
+func browseStripArticle(name string) string {
+	for article := range strings.FieldsSeq(browseIgnoredArticles) {
+		n := len(article)
+		if len(name) > n+1 && name[n] == ' ' &&
+			strings.EqualFold(name[:n], article) {
+			if rest := strings.TrimSpace(name[n+1:]); rest != "" {
+				return rest
+			}
+		}
+	}
+	return name
 }
 
 func browseIndexLetter(key string) string {
@@ -339,30 +396,78 @@ func getArtists(c *reqCtx) sdk.Response {
 	if browseOtherFolder(c) {
 		artists = nil
 	}
-	return c.respond(&body{Artists: &indexes{Index: browseGroupArtists(artists)}})
+	return c.respond(&body{Artists: &indexes{
+		IgnoredArticles: browseIgnoredArticles,
+		Index:           browseGroupArtists(artists),
+	}})
 }
 
 // getIndexes is the folder-based twin of getArtists: the library has the one
-// music folder, so the same artist grouping answers it.
-//
-// ifModifiedSince is read but never short-circuits: no timestamp here moves
-// when an artist is deleted (the newest remaining row can be older than the
-// client's copy), so answering "unchanged" could leave a client holding a
-// removed artist for good. The full index is always a correct answer.
+// music folder, so the same artist grouping answers it. With
+// ifModifiedSince at or after the index's lastModified it answers the
+// element with no index, as nothing changed since the client's copy.
 func getIndexes(c *reqCtx) sdk.Response {
 	artists, err := browseSortedArtists()
 	if err != nil {
 		return c.failErr(err)
 	}
-	modified, err := browseLibraryModified(artists)
+	modified, err := browseIndexModified(artists)
 	if err != nil {
 		return c.failErr(err)
 	}
-	out := &folderIndexes{LastModified: modified, Index: []index{}}
-	if !browseOtherFolder(c) {
+	out := &folderIndexes{
+		IgnoredArticles: browseIgnoredArticles,
+		LastModified:    modified,
+		Index:           []index{},
+	}
+	since, sent := c.millisParam("ifModifiedSince")
+	unchanged := sent && modified <= since.UnixMilli()
+	if !browseOtherFolder(c) && !unchanged {
 		out.Index = browseGroupArtists(artists)
 	}
 	return c.respond(&body{Indexes: out})
+}
+
+// browseIndexModified is when the index last changed, epoch ms. A core time
+// moves when an artist, album or track row changes, but nothing records an
+// artist leaving the library (its row deleted, or its last file gone from
+// disk), so the index is fingerprinted by what it lists and the time kept in
+// library_index moves to now whenever the fingerprint does. The first time
+// it is seen counts as now too: a client may hold a copy from before. A
+// listener's own marks (stars, ratings) are not part of it.
+func browseIndexModified(artists []browseArtist) (int64, error) {
+	h := sha256.New()
+	for _, a := range artists {
+		_, _ = fmt.Fprintf(h, "%d\x00%s\x00%s\x00%s\x00%d\n",
+			a.id, a.name, a.sortName, a.mbid, a.albumCount)
+	}
+	fingerprint := hex.EncodeToString(h.Sum(nil))
+	r, found, err := queryRow(
+		"SELECT fingerprint, changed_ms FROM library_index WHERE id = 1",
+	)
+	if err != nil {
+		return 0, err
+	}
+	if found && r.str(0) == fingerprint {
+		return r.int(1), nil
+	}
+	newest, err := browseLibraryModified(artists)
+	if err != nil {
+		return 0, err
+	}
+	changed := max(time.Now().UnixMilli(), newest)
+	if found {
+		changed = max(changed, r.int(1)+1)
+	}
+	if _, err := exec(
+		`INSERT INTO library_index(id, fingerprint, changed_ms) VALUES(1, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET fingerprint = excluded.fingerprint,
+			changed_ms = excluded.changed_ms`,
+		fingerprint, changed,
+	); err != nil {
+		return 0, err
+	}
+	return changed, nil
 }
 
 // browseLibraryModified is the newest change to anything an index entry
@@ -522,36 +627,43 @@ func getMusicDirectory(c *reqCtx) sdk.Response {
 	}
 }
 
-// getGenres lists the artists' genres: MusicBrainz names one per artist, and
-// its albums and songs inherit it. An artist with no genre is left out.
+// browseAlbumGenres is every listed album with each genre it is in, one row
+// per album and genre (column gkey the genre folded to lower case, name its
+// spelling): the album's own genres, else those of the artists it is listed
+// under, as browseHasGenre matches them.
+var browseAlbumGenres = `WITH ag AS (
+	SELECT al.id AS album_id, lower(g.value) AS gkey, g.value AS name
+	FROM streamline_albums al, json_each(` + browseGenreList("al") + `) g
+	WHERE g.type = 'text' AND g.value <> '' AND ` + browseListedAlbum("al") + `
+	UNION
+	SELECT al.id, lower(gx.genre), gx.genre
+	FROM streamline_albums al
+	JOIN streamline_album_artists ga ON ga.album_id = al.id
+	JOIN streamline_artists gx ON gx.id = ga.artist_id
+	WHERE json_array_length(` + browseGenreList("al") + `) = 0
+		AND gx.genre <> '' AND ` + browseListedAlbum("al") + `
+), bg AS (
+	SELECT album_id, gkey, min(name) AS name FROM ag GROUP BY album_id, gkey
+)`
+
+// getGenres lists the genres of the listed albums: an album's own (the
+// release group's top genres on MusicBrainz), else its artists'. An album
+// counts once per genre, under every artist it is listed under, and a genre
+// no listed album is in is left out.
 func getGenres(c *reqCtx) sdk.Response {
-	albumRows, err := query(
-		`SELECT ar.genre, count(al.id) FROM streamline_albums al
-		JOIN streamline_artists ar ON ar.id = al.artist_id
-		WHERE ar.genre <> '' AND ` + browseListedAlbum("al") + `
-		GROUP BY ar.genre`,
-	)
+	rows, err := query(browseAlbumGenres + `
+		SELECT min(bg.name), count(*),
+			(SELECT count(t.id) FROM streamline_tracks t
+				JOIN bg st ON st.album_id = t.album_id
+				WHERE st.gkey = bg.gkey AND ` + browsePlayable("t") + `)
+		FROM bg GROUP BY bg.gkey`)
 	if err != nil {
 		return c.failErr(err)
 	}
-	songRows, err := query(
-		`SELECT ar.genre, count(t.id) FROM streamline_tracks t
-		JOIN streamline_albums al ON al.id = t.album_id
-		JOIN streamline_artists ar ON ar.id = al.artist_id
-		WHERE ar.genre <> '' AND ` + browsePlayable("t") + `
-		GROUP BY ar.genre`,
-	)
-	if err != nil {
-		return c.failErr(err)
-	}
-	songs := make(map[string]int, len(songRows))
-	for _, r := range songRows {
-		songs[r.str(0)] = int(r.int(1))
-	}
-	out := &genres{Genre: make([]genre, 0, len(albumRows))}
-	for _, r := range albumRows {
+	out := &genres{Genre: make([]genre, 0, len(rows))}
+	for _, r := range rows {
 		out.Genre = append(out.Genre, genre{
-			Value: r.str(0), SongCount: songs[r.str(0)], AlbumCount: int(r.int(1)),
+			Value: r.str(0), AlbumCount: int(r.int(1)), SongCount: int(r.int(2)),
 		})
 	}
 	sort.Slice(out.Genre, func(i, j int) bool {
@@ -590,17 +702,67 @@ func browseArtistOf(c *reqCtx) (browseArtist, error) {
 	return artists[0], nil
 }
 
-// browseSimilarArtists are other artists in the library sharing ar's genre,
-// in a random order: the library knows no closer relation, and a shuffle
-// keeps a client's "similar" row from always showing the same few.
+// browseRelated is the ids of the artists the core relates to the seed
+// artist, constant SQL taking the seed's id five times then its MusicBrainz
+// id twice (browseRelatedArgs): those it shares a release with (a split or a
+// collaboration), those sharing a band member, a member who is an artist of
+// the library or a band the seed belongs to, and the artists credited on each
+// other's releases (track artist, featuring, performer).
+const browseRelated = `SELECT s2.artist_id FROM streamline_album_artists s1
+	JOIN streamline_album_artists s2 ON s2.album_id = s1.album_id
+	WHERE s1.artist_id = ?
+UNION SELECT m2.artist_id FROM streamline_artist_members m1
+	JOIN streamline_artist_members m2 ON m2.mbid = m1.mbid
+	WHERE m1.artist_id = ? AND m1.mbid <> ''
+UNION SELECT x.id FROM streamline_artist_members m
+	JOIN streamline_artists x ON x.mbid = m.mbid
+	WHERE m.artist_id = ? AND m.mbid <> ''
+UNION SELECT x.id FROM streamline_music_credits mc
+	JOIN streamline_artists x ON x.mbid = mc.mbid
+	WHERE mc.mbid <> '' AND mc.kind IN ('artist', 'featuring', 'performer')
+		AND (mc.album_id IN (SELECT album_id FROM streamline_album_artists
+				WHERE artist_id = ?)
+			OR mc.track_id IN (SELECT rt.id FROM streamline_tracks rt
+				JOIN streamline_album_artists ra ON ra.album_id = rt.album_id
+				WHERE ra.artist_id = ?))
+UNION SELECT m.artist_id FROM streamline_artist_members m
+	WHERE m.mbid = ? AND m.mbid <> ''
+UNION SELECT ca.artist_id FROM streamline_music_credits mc
+	LEFT JOIN streamline_tracks ct ON ct.id = mc.track_id
+	JOIN streamline_album_artists ca
+		ON ca.album_id = COALESCE(mc.album_id, ct.album_id)
+	WHERE mc.mbid = ? AND mc.mbid <> ''
+		AND mc.kind IN ('artist', 'featuring', 'performer')`
+
+func browseRelatedArgs(ar browseArtist) []any {
+	return []any{ar.id, ar.id, ar.id, ar.id, ar.id, ar.mbid, ar.mbid}
+}
+
+// browseSimilarArtists are the artists the core relates to ar
+// (browseRelated), then, to fill n, others sharing its genre; each part in a
+// random order, so a client's "similar" row does not always show the same
+// few. The core holds no listening-based similarity such as last.fm's.
 func browseSimilarArtists(ar browseArtist, n int) ([]browseArtist, error) {
-	if ar.genre == "" || n == 0 {
+	if n == 0 {
 		return nil, nil
 	}
-	return browseArtists(
-		"ar.genre = ? AND ar.id <> ? AND "+browseListedArtist("ar"),
-		[]any{ar.genre, ar.id}, "RANDOM()", n, 0,
+	related, err := browseArtists(
+		"ar.id IN ("+browseRelated+") AND ar.id <> ? AND "+browseListedArtist("ar"),
+		append(browseRelatedArgs(ar), ar.id), "RANDOM()", n, 0,
 	)
+	if err != nil || len(related) >= n || ar.genre == "" {
+		return related, err
+	}
+	same, err := browseArtists(
+		"ar.genre = ? AND ar.id <> ? AND ar.id NOT IN ("+browseRelated+") AND "+
+			browseListedArtist("ar"),
+		append([]any{ar.genre, ar.id}, browseRelatedArgs(ar)...),
+		"RANDOM()", n-len(related), 0,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return append(related, same...), nil
 }
 
 func browseArtistInfoParts(c *reqCtx) (artistInfoBase, []artistID3, error) {
@@ -666,20 +828,24 @@ func getAlbumInfo(c *reqCtx) sdk.Response {
 	return c.ok(&body{AlbumInfo: &albumInfo{MusicBrainzID: albums[0].mbid}})
 }
 
-// browseSimilarSongs is a random mix of the seed artist's songs and those of
-// the artists sharing its genre: what a client's "instant mix" plays.
+// browseSimilarSongs is a random mix of the seed artist's songs, those of
+// the artists the core relates to it (browseRelated) and those of the albums
+// in its genre: what a client's "instant mix" plays.
 func browseSimilarSongs(c *reqCtx) ([]child, error) {
 	ar, err := browseArtistOf(c)
 	if err != nil {
 		return nil, err
 	}
-	where, args := browseOfArtist("al"), []any{ar.id}
+	where := "(" + browseOfArtist("al") + ` OR EXISTS (
+		SELECT 1 FROM streamline_album_artists rs
+		WHERE rs.album_id = al.id AND rs.artist_id IN (` + browseRelated + `))`
+	args := append([]any{ar.id}, browseRelatedArgs(ar)...)
 	if ar.genre != "" {
-		where = "(" + where + " OR ar.genre = ?)"
-		args = append(args, ar.genre)
+		where += " OR " + browseHasGenre
+		args = append(args, ar.genre, ar.genre)
 	}
 	return songChildren(songQuery{
-		where: where,
+		where: where + ")",
 		args:  args,
 		order: "RANDOM()",
 		limit: c.intParam("count", browseSongCount, 1, browseMaxList),
@@ -702,30 +868,35 @@ func getSimilarSongs2(c *reqCtx) sdk.Response {
 	return c.respond(&body{SimilarSongs2: &songs{Song: s}})
 }
 
+// topSongsPlays is the plays of every track, summed over every listener.
+const topSongsPlays = `JOIN (SELECT target_id AS tid, sum(play_count) AS plays
+	FROM annotations WHERE target_kind = 'tr' AND play_count > 0
+	GROUP BY target_id) pl ON pl.tid = t.id`
+
 // getTopSongs ranks an artist's songs by plays summed over every listener.
 // A song nobody played is not a top song, so a fresh library answers none.
+// The name matches whatever its case, in any script (SQLite's lower() folds
+// ASCII only, so the comparison is made here); of two artists of that name,
+// the one whose songs were played most, then the one with songs to play,
+// answers.
 func getTopSongs(c *reqCtx) sdk.Response {
-	name := c.param("artist")
+	name := strings.TrimSpace(c.param("artist"))
 	if name == "" {
 		return c.failErr(envelope.MissingParam("artist"))
 	}
 	limit := c.intParam("count", browseSongCount, 1, browseMaxList)
 	out := &songs{Song: []child{}}
-	artists, err := browseArtists(
-		"lower(ar.name) = lower(?)", []any{name}, "ar.id", 1, 0,
-	)
+	artistID, found, err := topSongsArtist(name)
 	if err != nil {
 		return c.failErr(err)
 	}
-	if len(artists) == 0 {
+	if !found {
 		return c.respond(&body{TopSongs: out})
 	}
 	ranked, err := songChildren(songQuery{
-		join: `JOIN (SELECT target_id AS tid, sum(play_count) AS plays
-			FROM annotations WHERE target_kind = 'tr' AND play_count > 0
-			GROUP BY target_id) pl ON pl.tid = t.id`,
+		join:  topSongsPlays,
 		where: browseOfArtist("al"),
-		args:  []any{artists[0].id},
+		args:  []any{artistID},
 		order: "pl.plays DESC, t.id",
 		limit: limit,
 	})
@@ -734,4 +905,40 @@ func getTopSongs(c *reqCtx) sdk.Response {
 	}
 	out.Song = ranked
 	return c.respond(&body{TopSongs: out})
+}
+
+// topSongsArtist is the artist getTopSongs answers for name.
+func topSongsArtist(name string) (id uint32, found bool, err error) {
+	rows, err := query("SELECT id, name FROM streamline_artists ORDER BY id")
+	if err != nil {
+		return 0, false, err
+	}
+	var candidates []uint32
+	for _, r := range rows {
+		if strings.EqualFold(strings.TrimSpace(r.str(1)), name) {
+			candidates = append(candidates, r.uint(0))
+		}
+	}
+	switch len(candidates) {
+	case 0:
+		return 0, false, nil
+	case 1:
+		return candidates[0], true, nil
+	}
+	ranked, err := queryIn(
+		`SELECT cand.id FROM streamline_artists cand WHERE cand.id IN ({in})
+		ORDER BY (SELECT COALESCE(sum(pl.plays), 0) FROM streamline_tracks t
+				JOIN streamline_albums al ON al.id = t.album_id `+topSongsPlays+`
+				WHERE EXISTS (SELECT 1 FROM streamline_album_artists oa
+					WHERE oa.album_id = al.id AND oa.artist_id = cand.id)) DESC,
+			`+browseListedArtist("cand")+` DESC, cand.id`,
+		candidates,
+	)
+	if err != nil {
+		return 0, false, err
+	}
+	if len(ranked) == 0 {
+		return candidates[0], true, nil
+	}
+	return ranked[0].uint(0), true, nil
 }
