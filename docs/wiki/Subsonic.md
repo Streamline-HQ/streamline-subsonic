@@ -8,7 +8,7 @@ Apps such as Symfonium, DSub, Ultrasonic, Tempo, play:Sub, Feishin and Sublime M
 
 | Area | What you get |
 | --- | --- |
-| Browsing | Artists (A–Z index), artist → albums → songs in both the tag view and the folder view, genres, artist biography (the Wikipedia overview) and similar artists |
+| Browsing | Artists (A–Z index, filed past a leading The, El, La, Los, Las, Le or Les), artist → albums → songs in both the tag view and the folder view, genres, artist biography (the Wikipedia overview) and similar artists |
 | Lists | Album lists: newest, random, A–Z by name or artist, by year, by genre, starred, highest rated, most played, recently played. Random songs, songs by genre, now playing, starred items |
 | Search | All three versions (`search`, `search2`, `search3`), including the empty query apps use to sync the whole library |
 | Stars, ratings and plays | Star and unstar songs, albums and artists; rate them 1–5; scrobbling counts plays and records when you last played something |
@@ -24,6 +24,10 @@ Apps such as Symfonium, DSub, Ultrasonic, Tempo, play:Sub, Feishin and Sublime M
 | Users | Read your own account and change your own Subsonic password; admins can list accounts. Accounts and their Subsonic permissions are managed in the web UI |
 
 Apps see only what you can play: an album appears once at least one of its songs is on disk, and an artist once one of their albums does. The rest of a followed discography (albums, EPs and singles Streamline knows about but holds no file for) stays out of the apps, and an album's song count and length cover its playable songs. **Newest** lists albums by when their music arrived, not by when the artist was added.
+
+**Genres** come from each album's MusicBrainz genres; an album with none takes the genre of its artists (a split or a collaboration counts under each of them). A song shows its album's first genre, and genre lists, random songs and "songs by genre" match any of an album's genres.
+
+**Similar artists** are the ones Streamline relates to the artist: those sharing a release with it, a band member, or a credit on each other's songs (featuring, performers); the list is filled up with artists of the same genre. Streamline has no listening-based similarity (such as last.fm's). Similar songs mix the artist's own songs with those of related artists and of its genre.
 
 Each song carries its bit rate and, for a lossless file Streamline has measured, its bit depth and sampling rate (OpenSubsonic `bitDepth`, `samplingRate`), which apps that read them show as a quality badge such as 24-bit / 96 kHz.
 

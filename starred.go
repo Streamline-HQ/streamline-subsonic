@@ -112,7 +112,7 @@ func starredArtists(artistIDs []uint32) (map[uint32]artistID3, error) {
 func starredAlbums(albumIDs []uint32) (map[uint32]albumID3, error) {
 	rows, err := queryIn(
 		`SELECT a.id, a.mbid, a.title, a.release_date, a.added_at,
-			ar.id, ar.name, ar.genre,
+			ar.id, ar.name, `+browseAlbumGenre("a", "ar")+`,
 			(SELECT count(*) FROM streamline_tracks t
 			 WHERE t.album_id = a.id AND `+marksLiveTrack+`),
 			(SELECT COALESCE(sum(t.duration), 0) FROM streamline_tracks t
