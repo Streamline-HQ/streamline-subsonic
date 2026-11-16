@@ -623,12 +623,77 @@ var _ = Describe("lyrics", Label("e2e"), func() {
 		Expect(list(sl[0], "line")).To(HaveLen(2))
 	})
 
-	It("prefers the sidecar over the tag", func() {
-		tagFile(track.Path, "LYRICS", "from the tag")
+	It(
+		"lists the sidecar first, then the tag, and answers getLyrics with the sidecar",
+		func() {
+			tagFile(track.Path, "LYRICS", "from the tag")
+			lrc := strings.TrimSuffix(track.Path, filepath.Ext(track.Path)) + ".lrc"
+			Expect(
+				os.WriteFile(lrc, []byte("from the sidecar"), 0o600),
+			).To(Succeed())
+			sl := structured(trackID(track))
+			Expect(sl).To(HaveLen(2))
+			Expect(list(sl[0], "line")[0]["value"]).To(Equal("from the sidecar"))
+			Expect(list(sl[1], "line")[0]["value"]).To(Equal("from the tag"))
+			Expect(
+				obj(u.call("getLyrics", url.Values{
+					"artist": {name}, "title": {"Verse"},
+				}), "lyrics"),
+			).
+				To(HaveKeyWithValue("value", "from the sidecar"))
+		},
+	)
+
+	It("lists the same lyrics once when the sidecar and the tag agree", func() {
+		tagFile(track.Path, "LYRICS", "[00:01.00]Same words")
 		lrc := strings.TrimSuffix(track.Path, filepath.Ext(track.Path)) + ".lrc"
-		Expect(os.WriteFile(lrc, []byte("from the sidecar"), 0o600)).To(Succeed())
-		Expect(list(structured(trackID(track))[0], "line")[0]["value"]).
-			To(Equal("from the sidecar"))
+		Expect(os.WriteFile(lrc, []byte("[00:01.00]Same words"), 0o600)).
+			To(Succeed())
+		Expect(structured(trackID(track))).To(HaveLen(1))
+	})
+
+	It("names the language of each version", func() {
+		lrc := strings.TrimSuffix(track.Path, filepath.Ext(track.Path)) + ".lrc"
+		Expect(os.WriteFile(lrc, []byte("[la:fr]\n[00:01.00]Salut"), 0o600)).
+			To(Succeed())
+		tagFile(track.Path, "lyrics-eng", "Hello")
+		tagFile(track.Path, "lyrics-deu", "Hallo")
+		tagFile(track.Path, "LYRICS", "No language")
+		versions := structured(trackID(track))
+		langs := make([]string, 0, len(versions))
+		for _, sl := range versions {
+			langs = append(langs, sl["lang"].(string))
+		}
+		// The sidecar, then the tags in key order: LYRICS, lyrics-deu, lyrics-eng.
+		Expect(langs).To(Equal([]string{"fr", "xxx", "deu", "eng"}))
+	})
+
+	It("reads a sidecar whose extension is upper case", func() {
+		lrc := strings.TrimSuffix(track.Path, filepath.Ext(track.Path)) + ".LRC"
+		Expect(os.WriteFile(lrc, []byte("[00:01.00]Loud"), 0o600)).To(Succeed())
+		sl := structured(trackID(track))
+		Expect(sl).To(HaveLen(1))
+		Expect(list(sl[0], "line")[0]["value"]).To(Equal("Loud"))
+	})
+
+	It("finds a song by its credited artist, in any case and script", func() {
+		credited := app.unique("Émilie")
+		owner := app.unique("Owner")
+		own := app.addArtist(artistSpec{
+			Name: owner,
+			Albums: []albumSpec{{
+				Title: "Split", Year: 2020,
+				Tracks: []trackSpec{{Title: "Été", Position: 1, Credit: credited}},
+			}},
+		})
+		tagFile(own.Albums[0].Tracks[0].Path, "LYRICS", "Soleil")
+		for _, artist := range []string{credited, strings.ToUpper(credited), owner} {
+			ly := obj(u.call("getLyrics", url.Values{
+				"artist": {artist}, "title": {"Été"},
+			}), "lyrics")
+			Expect(ly["value"]).To(Equal("Soleil"), artist)
+			Expect(ly["artist"]).To(Equal(credited), artist)
+		}
 	})
 
 	It("answers empty lyrics when there are none", func() {
