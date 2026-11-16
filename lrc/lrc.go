@@ -20,9 +20,11 @@ type Line struct {
 	Value string
 }
 
-// Lyrics is a song's words, timed when the source was LRC.
+// Lyrics is a song's words, timed when the source was LRC. Lang is the
+// language an LRC [la:] tag names, as written; empty when there is none.
 type Lyrics struct {
 	Synced bool
+	Lang   string
 	Lines  []Line
 }
 
@@ -55,6 +57,7 @@ func Parse(text string) Lyrics {
 		timed   []Line
 		untimed []Line
 		offset  int64
+		lang    string
 	)
 	sc := bufio.NewScanner(strings.NewReader(strings.TrimPrefix(text, "\ufeff")))
 	sc.Buffer(make([]byte, 0, 64<<10), MaxFile)
@@ -78,6 +81,9 @@ func Parse(text string) Lyrics {
 			continue
 		}
 		if m := idTag.FindStringSubmatch(rest); m != nil {
+			if strings.EqualFold(m[1], "la") {
+				lang = strings.TrimSpace(m[2])
+			}
 			if strings.EqualFold(m[1], "offset") {
 				if n, err := strconv.ParseInt(
 					strings.TrimSpace(m[2]),
@@ -99,7 +105,7 @@ func Parse(text string) Lyrics {
 			// A positive offset shows the words earlier.
 			*timed[i].Start = max(*timed[i].Start-offset, 0)
 		}
-		return Lyrics{Synced: true, Lines: timed}
+		return Lyrics{Synced: true, Lang: lang, Lines: timed}
 	}
 	// Trim blank lines at either end; keep the stanza breaks between.
 	for len(untimed) > 0 && untimed[0].Value == "" {
@@ -108,7 +114,27 @@ func Parse(text string) Lyrics {
 	for len(untimed) > 0 && untimed[len(untimed)-1].Value == "" {
 		untimed = untimed[:len(untimed)-1]
 	}
-	return Lyrics{Lines: untimed}
+	return Lyrics{Lang: lang, Lines: untimed}
+}
+
+// UnknownLang is the lang of lyrics whose language is not known: the value
+// taggers write, which OpenSubsonic accepts alongside und.
+const UnknownLang = "xxx"
+
+// NormalizeLang makes a language a source names an ISO 639 code: two or
+// three letters, lowercased. Anything else, an empty value included, is
+// UnknownLang.
+func NormalizeLang(raw string) string {
+	code := strings.ToLower(strings.TrimSpace(raw))
+	if len(code) < 2 || len(code) > 3 {
+		return UnknownLang
+	}
+	for _, r := range code {
+		if r < 'a' || r > 'z' {
+			return UnknownLang
+		}
+	}
+	return code
 }
 
 // stripWordStamps drops enhanced LRC word times from a line, and the spaces
@@ -153,18 +179,38 @@ type probeOutput struct {
 	Streams []struct{ Tags probeTags }
 }
 
-// FromProbe finds the lyrics tag in the JSON ffprobe printed for ProbeArgs:
-// "lyrics", "unsyncedlyrics" or a USLT frame, which ffmpeg names
-// "lyrics-<language>". An empty string is none.
+// Tag is one lyrics tag of a file: its text, and the language its key names
+// ("eng" for ffmpeg's "lyrics-eng"), empty when the key names none.
+type Tag struct {
+	Lang string
+	Text string
+}
+
+// FromProbe finds the first lyrics tag in the JSON ffprobe printed for
+// ProbeArgs. An empty string is none.
 func FromProbe(out []byte) string {
+	if tags := TagsFromProbe(out); len(tags) > 0 {
+		return tags[0].Text
+	}
+	return ""
+}
+
+// TagsFromProbe finds every lyrics tag in the JSON ffprobe printed for
+// ProbeArgs: "lyrics", "unsyncedlyrics" or a USLT frame, which ffmpeg names
+// "lyrics-<language>" (or "lyrics-<description>-<language>"). The file's tags
+// come before its streams', each set in key order; a text met twice, as when
+// a container repeats a stream's tags, is listed once.
+func TagsFromProbe(out []byte) []Tag {
 	var p probeOutput
 	if err := json.Unmarshal(out, &p); err != nil {
-		return ""
+		return nil
 	}
 	sources := []probeTags{p.Format.Tags}
 	for _, s := range p.Streams {
 		sources = append(sources, s.Tags)
 	}
+	var found []Tag
+	seen := map[string]bool{}
 	for _, tags := range sources {
 		keys := make([]string, 0, len(tags))
 		for k := range tags {
@@ -173,12 +219,25 @@ func FromProbe(out []byte) string {
 		// Map order is random; a fixed one keeps the answer stable.
 		sort.Strings(keys)
 		for _, k := range keys {
-			if isLyricsKey(strings.ToLower(k)) && strings.TrimSpace(tags[k]) != "" {
-				return tags[k]
+			key := strings.ToLower(k)
+			text := tags[k]
+			if !isLyricsKey(key) || strings.TrimSpace(text) == "" || seen[text] {
+				continue
 			}
+			seen[text] = true
+			found = append(found, Tag{Lang: keyLang(key), Text: text})
 		}
 	}
-	return ""
+	return found
+}
+
+// keyLang is the language at the end of a "lyrics-…" or "uslt-…" key.
+func keyLang(key string) string {
+	_, lang, found := strings.CutLast(key, "-")
+	if !found {
+		return ""
+	}
+	return lang
 }
 
 func isLyricsKey(k string) bool {
