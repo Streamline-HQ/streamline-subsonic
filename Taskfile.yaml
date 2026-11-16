@@ -36,10 +36,12 @@ tasks:
       - cd e2e && go tool golangci-lint run ./...
 
   fmt:
-    desc: Format Go sources
-    cmds:
-      - GOWORK=off go tool golangci-lint fmt ./...
-      - cd e2e && go tool golangci-lint fmt ./...
+    desc: Format Go and Nix (treefmt, configured in flake.nix)
+    cmd: treefmt
+
+  fmt:check:
+    desc: Check formatting without writing
+    cmd: treefmt --ci
 
   test:unit:
     desc: Run the host-free specs natively
