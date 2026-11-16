@@ -5,7 +5,7 @@ import "strconv"
 // schemaVersion names the marker table ensureSchema looks for. Bump it when
 // the statements below change; every statement is idempotent, so a request
 // that finds no marker for this version runs them all again.
-const schemaVersion = 1
+const schemaVersion = 2
 
 // The extension's own tables and their indexes.
 //
@@ -137,6 +137,16 @@ var schema = []string{
 		expires_at TEXT NOT NULL,
 		PRIMARY KEY (user_id, player)
 	) WITHOUT ROWID`,
+
+	// The artist index as getIndexes last saw it: a fingerprint of what it
+	// lists and when that last changed (epoch ms), so its lastModified also
+	// moves when an artist leaves the library, which no core time records.
+	// One row, id 1.
+	`CREATE TABLE IF NOT EXISTS library_index(
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		fingerprint TEXT NOT NULL,
+		changed_ms INTEGER NOT NULL
+	)`,
 }
 
 // ensureSchema creates the tables when this database has not been prepared

@@ -110,8 +110,8 @@ func listsAlbums(c *reqCtx) ([]browseAlbum, error) {
 		if genre == "" {
 			return nil, envelope.MissingParam("genre")
 		}
-		q.where += " AND lower(ar.genre) = lower(?)"
-		q.args = []any{genre}
+		q.where += " AND " + browseHasGenre
+		q.args = []any{genre, genre}
 		q.order = "al.title, al.id"
 	case "starred":
 		q = listsMarked(
@@ -194,8 +194,8 @@ func getRandomSongs(c *reqCtx) sdk.Response {
 		limit: c.intParam("size", browseListSize, 1, browseMaxList),
 	}
 	if g := c.param("genre"); g != "" {
-		q.where += " AND lower(ar.genre) = lower(?)"
-		q.args = append(q.args, g)
+		q.where += " AND " + browseHasGenre
+		q.args = append(q.args, g, g)
 	}
 	if hasFrom {
 		q.where += " AND al.release_date IS NOT NULL AND " + listsYear + " >= ?"
@@ -223,8 +223,8 @@ func getSongsByGenre(c *reqCtx) sdk.Response {
 		return c.respond(&body{SongsByGenre: out})
 	}
 	found, err := songChildren(songQuery{
-		where:  "lower(ar.genre) = lower(?)",
-		args:   []any{genre},
+		where:  browseHasGenre,
+		args:   []any{genre, genre},
 		order:  "t.id",
 		limit:  c.intParam("count", browseListSize, 1, browseMaxList),
 		offset: c.intParam("offset", 0, 0, browseMaxOffset),

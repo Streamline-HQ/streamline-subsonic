@@ -81,10 +81,10 @@ type songQuery struct {
 }
 
 // The first file a track still has on disk is the one a client is offered.
-const songSQL = `SELECT t.id, t.mbid, t.title, t.disc, t.position, t.duration,
+var songSQL = `SELECT t.id, t.mbid, t.title, t.disc, t.position, t.duration,
 	t.artist_credit, f.added_at,
 	al.id, al.title, al.release_date,
-	ar.id, ar.name, ar.genre,
+	ar.id, ar.name, ` + browseAlbumGenre("al", "ar") + `,
 	f.path, f.size, f.format, f.duration, f.bitrate, f.bit_depth, f.sample_rate
 FROM streamline_tracks t
 JOIN streamline_albums al ON al.id = t.album_id

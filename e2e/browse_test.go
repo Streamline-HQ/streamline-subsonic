@@ -149,23 +149,73 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			Expect(browseNames(ix)).To(ContainElement(band.Name))
 		})
 
-		It(
-			"filters getIndexes by music folder and never by ifModifiedSince",
-			func() {
-				Expect(obj(u.call("getIndexes", url.Values{"musicFolderId": {"2"}}),
-					"indexes")["index"]).To(BeEmpty())
-				Expect(browseNames(obj(u.call("getIndexes",
-					url.Values{"musicFolderId": {"1"}}), "indexes"))).
-					To(ContainElement(band.Name))
-				for _, since := range []string{"99999999999999", "0"} {
-					got := obj(u.call("getIndexes",
-						url.Values{"ifModifiedSince": {since}}), "indexes")
-					Expect(browseNames(got)).To(ContainElement(band.Name), since)
+		It("filters getIndexes and getArtists by music folder", func() {
+			Expect(obj(u.call("getIndexes", url.Values{"musicFolderId": {"2"}}),
+				"indexes")["index"]).To(BeEmpty())
+			Expect(browseNames(obj(u.call("getIndexes",
+				url.Values{"musicFolderId": {"1"}}), "indexes"))).
+				To(ContainElement(band.Name))
+			Expect(obj(u.call("getArtists", url.Values{"musicFolderId": {"2"}}),
+				"artists")["index"]).To(BeEmpty())
+		})
+
+		It("answers no index when nothing changed since ifModifiedSince", func() {
+			ix := obj(u.call("getIndexes", nil), "indexes")
+			last := fmt.Sprint(int64(ix["lastModified"].(float64)))
+			Expect(browseNames(ix)).To(ContainElement(band.Name))
+
+			same := obj(u.call("getIndexes",
+				url.Values{"ifModifiedSince": {last}}), "indexes")
+			Expect(fmt.Sprint(int64(same["lastModified"].(float64)))).To(Equal(last))
+			Expect(same["ignoredArticles"]).To(Equal("The El La Los Las Le Les"))
+			Expect(list(same, "index")).To(BeEmpty())
+			for _, since := range []string{"0", "garbage"} {
+				got := obj(u.call("getIndexes",
+					url.Values{"ifModifiedSince": {since}}), "indexes")
+				Expect(browseNames(got)).To(ContainElement(band.Name), since)
+			}
+
+			// An artist leaving the library, its last file gone from disk,
+			// moves lastModified although no core time does.
+			browseCore(
+				"UPDATE media_files SET missing_since = ? WHERE id = ?",
+				coreTime(time.Now()), band.WithFile.FileID,
+			)
+			moved := obj(u.call("getIndexes",
+				url.Values{"ifModifiedSince": {last}}), "indexes")
+			Expect(moved["lastModified"]).To(BeNumerically(">", ix["lastModified"]))
+			Expect(list(moved, "index")).NotTo(BeEmpty())
+			Expect(browseNames(moved)).NotTo(ContainElement(band.Name))
+		})
+
+		It("files an artist past a leading article it advertises", func() {
+			name := "The " + app.unique("Quokkas")
+			art := app.addArtist(artistSpec{
+				Name: name, Genre: "Pop",
+				Albums: []albumSpec{{
+					Title: app.unique("Pouch"), Year: 2010,
+					Tracks: []trackSpec{{Title: "Hop", Position: 1}},
+				}},
+			})
+			letterOf := func(endpoint, key string) string {
+				GinkgoHelper()
+				got := obj(u.call(endpoint, nil), key)
+				Expect(got["ignoredArticles"]).To(Equal("The El La Los Las Le Les"))
+				for _, idx := range list(got, "index") {
+					if slices.Contains(ids(list(idx, "artist")), browseAr(art.ID)) {
+						return idx["name"].(string)
+					}
 				}
-				Expect(obj(u.call("getArtists", url.Values{"musicFolderId": {"2"}}),
-					"artists")["index"]).To(BeEmpty())
-			},
-		)
+				return ""
+			}
+			Expect(letterOf("getArtists", "artists")).To(Equal("Q"))
+			browseCore("UPDATE artists SET sort_name = '' WHERE id = ?", art.ID)
+			Expect(letterOf("getArtists", "artists")).To(Equal("Q"))
+			Expect(letterOf("getIndexes", "indexes")).To(Equal("Q"))
+			browseCore("UPDATE artists SET sort_name = ? WHERE id = ?",
+				"Zz "+name, art.ID)
+			Expect(letterOf("getArtists", "artists")).To(Equal("Z"))
+		})
 
 		It("lists an artist's albums with the songs it can play", func() {
 			got := obj(u.call("getArtist",
@@ -572,6 +622,106 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			Expect(errorCode(u.callError("getSongsByGenre", nil))).To(Equal(10))
 		})
 
+		It("takes an album's own genres before its artist's", func() {
+			own, shared := app.unique("Shoegaze"), app.unique("Dream Pop")
+			ar := app.addArtist(artistSpec{
+				Name: app.unique("Slowdive"), Genre: band.Genre,
+				Albums: []albumSpec{
+					{
+						Title: app.unique("Souvlaki"), Year: 1993,
+						Genres: []string{own, shared},
+						Tracks: []trackSpec{{Title: "Alison", Position: 1}},
+					},
+					{
+						Title: app.unique("Untagged"), Year: 1995,
+						Genres: []string{},
+						Tracks: []trackSpec{{Title: "Rutti", Position: 1}},
+					},
+				},
+			})
+			tagged, untagged := ar.Albums[0], ar.Albums[1]
+
+			song := obj(u.call("getSong", url.Values{
+				"id": {browseTr(tagged.Tracks[0].ID)},
+			}), "song")
+			Expect(song["genre"]).To(Equal(own))
+			album := obj(u.call("getAlbum", url.Values{
+				"id": {browseAl(tagged.ID)},
+			}), "album")
+			Expect(album["genre"]).To(Equal(own))
+			album = obj(u.call("getAlbum", url.Values{
+				"id": {browseAl(untagged.ID)},
+			}), "album")
+			Expect(album["genre"]).To(Equal(band.Genre))
+
+			counts := map[string]map[string]any{}
+			for _, g := range list(obj(u.call("getGenres", nil), "genres"), "genre") {
+				counts[g["value"].(string)] = g
+			}
+			for _, g := range []string{own, shared} {
+				Expect(counts).To(HaveKey(g))
+				Expect(counts[g]["albumCount"]).To(BeEquivalentTo(1), g)
+				Expect(counts[g]["songCount"]).To(BeEquivalentTo(1), g)
+			}
+			// The band's album and the untagged one, which falls back to its
+			// artist's genre; not the tagged one.
+			Expect(counts[band.Genre]["albumCount"]).To(BeEquivalentTo(2))
+			Expect(counts[band.Genre]["songCount"]).To(BeEquivalentTo(2))
+
+			albums := obj(u.call("getAlbumList2", url.Values{
+				"type": {"byGenre"}, "genre": {strings.ToUpper(shared)},
+			}), "albumList2")
+			Expect(
+				ids(list(albums, "album")),
+			).To(Equal([]string{browseAl(tagged.ID)}))
+			albums = obj(u.call("getAlbumList2", url.Values{
+				"type": {"byGenre"}, "genre": {band.Genre}, "size": {"500"},
+			}), "albumList2")
+			Expect(ids(list(albums, "album"))).To(ConsistOf(
+				browseAl(band.albumID()), browseAl(untagged.ID),
+			))
+			byGenre := obj(u.call("getSongsByGenre", url.Values{
+				"genre": {own},
+			}), "songsByGenre")
+			Expect(ids(list(byGenre, "song"))).To(Equal(
+				[]string{browseTr(tagged.Tracks[0].ID)}))
+			random := obj(u.call("getRandomSongs", url.Values{
+				"genre": {shared}, "size": {"50"},
+			}), "randomSongs")
+			Expect(ids(list(random, "song"))).To(Equal(
+				[]string{browseTr(tagged.Tracks[0].ID)}))
+		})
+
+		It("counts a co-credited album under its guest's genre", func() {
+			genre := app.unique("Krautrock")
+			guest := app.addArtist(artistSpec{Name: app.unique("Can"), Genre: genre})
+			untagged := app.addArtist(artistSpec{
+				Name: app.unique("Host"), Genre: "Pop",
+				Albums: []albumSpec{{
+					Title: app.unique("Split"), Year: 1972, Genres: []string{},
+					Tracks: []trackSpec{{Title: "Vitamin", Position: 1}},
+				}},
+			}).Albums[0]
+			browseCore(
+				"INSERT INTO artist_co_albums(album_id, artist_id) VALUES(?, ?)",
+				untagged.ID, guest.ID,
+			)
+			var found map[string]any
+			for _, g := range list(obj(u.call("getGenres", nil), "genres"), "genre") {
+				if g["value"] == genre {
+					found = g
+				}
+			}
+			Expect(found).NotTo(BeNil())
+			Expect(found["albumCount"]).To(BeEquivalentTo(1))
+			albums := obj(u.call("getAlbumList2", url.Values{
+				"type": {"byGenre"}, "genre": {genre},
+			}), "albumList2")
+			Expect(
+				ids(list(albums, "album")),
+			).To(Equal([]string{browseAl(untagged.ID)}))
+		})
+
 		It("counts nothing for an album that holds no file", func() {
 			genre := app.unique("Cool")
 			app.addArtist(artistSpec{
@@ -804,6 +954,63 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			}))).To(Equal(70))
 		})
 
+		It("relates artists through shared releases, members and credits", func() {
+			spec := func(prefix string) artistSpec {
+				return artistSpec{
+					Name: app.unique(prefix), Genre: app.unique("Elsewhere"),
+					Albums: []albumSpec{{
+						Title: app.unique("Record"), Year: 2000,
+						Tracks: []trackSpec{{Title: "Song", Position: 1}},
+					}},
+				}
+			}
+			split, sideProject, featured := app.addArtist(spec("Split")),
+				app.addArtist(spec("Side")), app.addArtist(spec("Feat"))
+			stranger := app.addArtist(spec("Stranger"))
+			now := coreTime(time.Now())
+			browseCore(
+				"INSERT INTO artist_co_albums(album_id, artist_id) VALUES(?, ?)",
+				split.Albums[0].ID, band.Artist.ID,
+			)
+			member := app.unique("member-mbid")
+			for _, artistID := range []uint32{band.Artist.ID, sideProject.ID} {
+				browseCore(`INSERT INTO artist_members(create_time, update_time,
+					name, mbid, ordinal, artist_members) VALUES(?, ?, 'Kurt', ?, 0, ?)`,
+					now, now, member, artistID)
+			}
+			var featuredMBID string
+			Expect(app.core.QueryRow(
+				"SELECT mbid FROM artists WHERE id = ?", featured.ID,
+			).Scan(&featuredMBID)).To(Succeed())
+			browseCore(`INSERT INTO music_credits(create_time, update_time, kind,
+				name, mbid, ordinal, track_credits) VALUES(?, ?, 'featuring', ?, ?, 0, ?)`,
+				now, now, featured.Name, featuredMBID, band.WithFile.ID)
+
+			info := obj(u.call("getArtistInfo2", url.Values{
+				"id": {browseAr(band.Artist.ID)}, "count": {"100"},
+			}), "artistInfo2")
+			Expect(ids(list(info, "similarArtist"))).To(ConsistOf(
+				browseAr(split.ID), browseAr(sideProject.ID), browseAr(featured.ID),
+			))
+			// The featured artist names the band in return.
+			info = obj(u.call("getArtistInfo2", url.Values{
+				"id": {browseAr(featured.ID)},
+			}), "artistInfo2")
+			Expect(ids(list(info, "similarArtist"))).To(ContainElement(
+				browseAr(band.Artist.ID)))
+
+			got := obj(u.call("getSimilarSongs2", url.Values{
+				"id": {browseAr(band.Artist.ID)}, "count": {"500"},
+			}), "similarSongs2")
+			Expect(ids(list(got, "song"))).To(ContainElements(
+				browseTr(split.Albums[0].Tracks[0].ID),
+				browseTr(sideProject.Albums[0].Tracks[0].ID),
+				browseTr(featured.Albums[0].Tracks[0].ID),
+			))
+			Expect(ids(list(got, "song"))).NotTo(ContainElement(
+				browseTr(stranger.Albums[0].Tracks[0].ID)))
+		})
+
 		It("mixes similar and random songs from playable tracks only", func() {
 			for endpoint, key := range map[string]string{
 				"getSimilarSongs": "similarSongs", "getSimilarSongs2": "similarSongs2",
@@ -847,6 +1054,35 @@ var _ = Describe("browsing the library", Label("e2e"), func() {
 			top = obj(u.call("getTopSongs", url.Values{"artist": {"Nobody At All"}}),
 				"topSongs")
 			Expect(list(top, "song")).To(BeEmpty())
+		})
+
+		It("finds the top songs' artist whatever the case of its name", func() {
+			art := app.addArtist(artistSpec{
+				Name: app.unique("Émilie Ölund"), Genre: "Pop",
+				Albums: []albumSpec{{
+					Title: app.unique("Été"), Year: 2001,
+					Tracks: []trackSpec{{Title: "Ça", Position: 1}},
+				}},
+			})
+			// A homonym with nothing to play is not the one answered.
+			app.addArtist(artistSpec{Name: strings.ToUpper(art.Name), Genre: "Pop"})
+			track := art.Albums[0].Tracks[0]
+			db := app.ext()
+			defer db.Close()
+			_, err := db.Exec(
+				`INSERT INTO annotations(user_id, target_kind, target_id, play_count)
+				VALUES(?, 'tr', ?, 3)`,
+				u.ID, track.ID,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			for _, name := range []string{
+				strings.ToUpper(art.Name), strings.ToLower(art.Name), art.Name,
+			} {
+				top := obj(u.call("getTopSongs", url.Values{"artist": {name}}),
+					"topSongs")
+				Expect(ids(list(top, "song"))).To(Equal(
+					[]string{browseTr(track.ID)}), name)
+			}
 		})
 
 		It("ranks top songs by plays over every listener", func() {
