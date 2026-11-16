@@ -1,4 +1,4 @@
-module github.com/streamline-hq/streamline-subsonic/e2e
+module github.com/streamline-hq/streamline-subsonic-ext/e2e
 
 go 1.27.3
 

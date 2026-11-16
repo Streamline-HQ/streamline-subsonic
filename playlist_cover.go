@@ -10,9 +10,9 @@ import (
 	"strconv"
 
 	"github.com/datahearth/streamline/extensions/sdk"
-	"github.com/streamline-hq/streamline-subsonic/envelope"
-	"github.com/streamline-hq/streamline-subsonic/ids"
-	"github.com/streamline-hq/streamline-subsonic/mosaic"
+	"github.com/streamline-hq/streamline-subsonic-ext/envelope"
+	"github.com/streamline-hq/streamline-subsonic-ext/ids"
+	"github.com/streamline-hq/streamline-subsonic-ext/mosaic"
 )
 
 const playlistCoverDir = "playlist-covers"

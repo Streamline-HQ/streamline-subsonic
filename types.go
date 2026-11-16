@@ -1,6 +1,6 @@
 package main
 
-import "github.com/streamline-hq/streamline-subsonic/envelope"
+import "github.com/streamline-hq/streamline-subsonic-ext/envelope"
 
 // body is the payload a handler sets, at most one field non-nil, serialized
 // inside <subsonic-response> / "subsonic-response".

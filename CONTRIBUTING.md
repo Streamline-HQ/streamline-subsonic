@@ -19,6 +19,8 @@ useful things you can send.
 Requires Go (the `go` directive in `go.mod`), [Task](https://taskfile.dev), and
 for the end-to-end suite `ffmpeg` on `PATH` and a Streamline binary built from a
 version that serves extension contract 2.
+Nix users get Go (at exactly the `go.mod` version), Task, ffmpeg and the formatters
+from the flake devshell (`nix develop`, or direnv).
 
 ```bash
 git clone https://github.com/Streamline-HQ/streamline-subsonic-ext.git

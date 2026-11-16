@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/datahearth/streamline/extensions/sdk"
-	"github.com/streamline-hq/streamline-subsonic/envelope"
+	"github.com/streamline-hq/streamline-subsonic-ext/envelope"
 )
 
 func init() {

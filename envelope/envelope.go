@@ -47,7 +47,7 @@ const (
 
 // HelpURL is the page that explains how an app signs in, the OpenSubsonic
 // helpUrl of the authentication errors.
-const HelpURL = "https://github.com/streamline-hq/streamline-subsonic/blob/main/docs/wiki/Subsonic.md"
+const HelpURL = "https://github.com/streamline-hq/streamline-subsonic-ext/blob/main/docs/wiki/Subsonic.md"
 
 // Error is a Subsonic error: the code and message a failed response carries,
 // and the OpenSubsonic helpUrl when a page says more.
