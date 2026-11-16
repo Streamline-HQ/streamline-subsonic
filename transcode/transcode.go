@@ -5,6 +5,7 @@ package transcode
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -70,12 +71,62 @@ func Args(src string, o Options) ([]string, error) {
 	), nil
 }
 
+// probedSuffixes are the files whose suffix does not say whether they already
+// hold a format's codec: an .m4a may be AAC or ALAC, an .ogg Opus or Vorbis.
+var probedSuffixes = map[string][]string{
+	"aac":  {"m4a", "mp4", "m4b"},
+	"opus": {"ogg", "oga"},
+}
+
+// overCap reports a cap the file's bitrate exceeds, or one set on a file of
+// unknown bitrate.
+func overCap(srcKbps uint32, maxKbps int) bool {
+	return maxKbps > 0 && (srcKbps == 0 || int(srcKbps) > maxKbps)
+}
+
+// NeedsProbe reports whether Plan can only tell that a file is already in the
+// requested format from its codec: the suffix is one that may hold it, and no
+// cap forces a conversion anyway.
+func NeedsProbe(suffix string, srcKbps uint32, format string, maxKbps int) bool {
+	format = strings.ToLower(strings.TrimSpace(format))
+	return !overCap(srcKbps, maxKbps) &&
+		slices.Contains(probedSuffixes[format], suffix)
+}
+
+// ProbeCodecArgs is the ffprobe command line that prints the codec of a
+// file's first audio stream, host path in src.
+func ProbeCodecArgs(src string) []string {
+	return []string{
+		"-v", "quiet", "-select_streams", "a:0",
+		"-show_entries", "stream=codec_name",
+		"-of", "default=noprint_wrappers=1:nokey=1", src,
+	}
+}
+
+// ParseCodec reads ProbeCodecArgs' output: the codec name, "" when there is
+// none.
+func ParseCodec(out []byte) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	return strings.ToLower(strings.TrimSpace(first))
+}
+
+// holds reports a file of suffix and codec that already is format: its own
+// suffix, or a container probedSuffixes names holding the format's codec.
+func holds(suffix, codec, format string) bool {
+	if format == suffix {
+		return true
+	}
+	return codec == format && slices.Contains(probedSuffixes[format], suffix)
+}
+
 // Plan decides whether a stream converts a file, and to what. A client gets
 // the original unless it asks for another format this server can make, or
 // caps the bitrate below the file's (or a file whose bitrate is unknown).
-// "raw" always means the original.
+// "raw" always means the original. codec is the file's audio codec as
+// ffprobe names it, "" when unknown: an AAC .m4a asked for as aac, or an Opus
+// .ogg as opus, is sent as it is.
 func Plan(
-	suffix string,
+	suffix, codec string,
 	srcKbps uint32,
 	format string,
 	maxKbps int,
@@ -85,8 +136,8 @@ func Plan(
 		return Options{}, false
 	}
 	_, known := Formats[format]
-	overCap := maxKbps > 0 && (srcKbps == 0 || int(srcKbps) > maxKbps)
-	sameFormat := format == "" || format == suffix || !known
+	overCap := overCap(srcKbps, maxKbps)
+	sameFormat := format == "" || !known || holds(suffix, codec, format)
 	if sameFormat && !overCap {
 		return Options{}, false
 	}

@@ -2,11 +2,13 @@ package e2e
 
 import (
 	"bytes"
+	"image/jpeg"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -135,6 +137,75 @@ var _ = Describe("stream and download", Label("e2e"), func() {
 			Expect(raw.Header.Get("Content-Type")).To(Equal("audio/mpeg"))
 			Expect(raw.Body).NotTo(Equal(bin(t)))
 		})
+
+		It("sends a file already in the codec asked for as it is", func() {
+			own := app.addArtist(artistSpec{
+				Name: app.unique("Codecs"),
+				Albums: []albumSpec{{
+					Title: "Containers", Year: 2020,
+					Tracks: []trackSpec{
+						{Title: "Mp4", Position: 1, Format: "m4a"},
+						{Title: "Ogg", Position: 2, Format: "ogg"},
+					},
+				}},
+			})
+			m4a, ogg := own.Albums[0].Tracks[0], own.Albums[0].Tracks[1]
+
+			raw := u.get(
+				"stream",
+				url.Values{"id": {trackID(m4a)}, "format": {"aac"}},
+			)
+			Expect(raw.Header.Get("Content-Type")).To(Equal("audio/mp4"))
+			Expect(raw.Body).To(Equal(bin(m4a)))
+			raw = u.get(
+				"stream",
+				url.Values{"id": {trackID(ogg)}, "format": {"opus"}},
+			)
+			Expect(raw.Header.Get("Content-Type")).To(Equal("audio/ogg"))
+			Expect(raw.Body).To(Equal(bin(ogg)))
+
+			// Another codec, or a cap under the file's bitrate, still converts.
+			raw = u.get(
+				"stream",
+				url.Values{"id": {trackID(m4a)}, "format": {"mp3"}},
+			)
+			Expect(isMP3(raw.Body)).To(BeTrue())
+			raw = u.get("stream", url.Values{
+				"id": {trackID(m4a)}, "format": {"aac"}, "maxBitRate": {"32"},
+			})
+			Expect(raw.Header.Get("Content-Type")).To(Equal("audio/aac"))
+			Expect(raw.Body).NotTo(Equal(bin(m4a)))
+		})
+
+		It("types a file by its suffix, beyond the common formats", func() {
+			own := app.addArtist(artistSpec{
+				Name: app.unique("Wave"),
+				Albums: []albumSpec{{
+					Title: "Pcm", Year: 2020,
+					Tracks: []trackSpec{{Title: "Tone", Position: 1, Format: "wav"}},
+				}},
+			})
+			t := own.Albums[0].Tracks[0]
+			song := obj(u.call("getSong", url.Values{"id": {trackID(t)}}), "song")
+			Expect(song["contentType"]).To(Equal("audio/wav"))
+			raw := u.get("stream", url.Values{"id": {trackID(t)}})
+			Expect(raw.Header.Get("Content-Type")).To(Equal("audio/wav"))
+			Expect(raw.Body).To(Equal(bin(t)))
+		})
+
+		It(
+			"sends the original from its start for format=raw, timeOffset or not",
+			func() {
+				t := lib.track(0, 0, 0)
+				raw := u.get("stream", url.Values{
+					"id": {trackID(t)}, "format": {"raw"}, "timeOffset": {"1"},
+				})
+				Expect(raw.Status).To(Equal(http.StatusOK))
+				Expect(raw.Header.Get("Content-Type")).To(Equal("audio/flac"))
+				Expect(raw.Header.Get("Accept-Ranges")).To(Equal("bytes"))
+				Expect(raw.Body).To(Equal(bin(t)))
+			},
+		)
 
 		It("starts a transcode at timeOffset, even when none was asked for", func() {
 			long := app.addArtist(artistSpec{
@@ -329,6 +400,36 @@ var _ = Describe("getCoverArt", Label("e2e"), func() {
 		Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
 		Expect(raw.Header.Get("Cache-Control")).
 			To(Equal("private, max-age=86400"))
+		Expect(raw.Body).To(Equal(want))
+	})
+
+	It("scales a cover down to the size asked for, never up", func() {
+		album := lib.Artists[0].Albums[0]
+		want, err := os.ReadFile(poster("albums", album.ID))
+		Expect(err).NotTo(HaveOccurred())
+		stored, err := jpeg.DecodeConfig(bytes.NewReader(want))
+		Expect(err).NotTo(HaveOccurred())
+		side := max(stored.Width, stored.Height)
+
+		for _, id := range []string{"al-" + itoa(album.ID), trackID(album.Tracks[0])} {
+			raw := u.get("getCoverArt", url.Values{"id": {id}, "size": {"8"}})
+			Expect(raw.Status).To(Equal(http.StatusOK), id)
+			Expect(raw.Header.Get("Content-Type")).To(Equal("image/jpeg"))
+			Expect(raw.Header.Get("Cache-Control")).
+				To(Equal("private, max-age=86400"))
+			cfg, err := jpeg.DecodeConfig(bytes.NewReader(raw.Body))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(max(cfg.Width, cfg.Height)).To(Equal(8), id)
+		}
+		cached, err := filepath.Glob(
+			filepath.Join(app.CacheDir, "cover-sizes", "*.jpg"),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cached).NotTo(BeEmpty())
+
+		raw := u.get("getCoverArt", url.Values{
+			"id": {"al-" + itoa(album.ID)}, "size": {strconv.Itoa(side * 4)},
+		})
 		Expect(raw.Body).To(Equal(want))
 	})
 

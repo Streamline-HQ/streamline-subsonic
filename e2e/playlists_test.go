@@ -479,6 +479,16 @@ var _ = Describe("playlists", Label("e2e"), func() {
 			Expect(raw.Body).NotTo(Equal(single))
 			_, err = jpeg.Decode(bytes.NewReader(raw.Body))
 			Expect(err).NotTo(HaveOccurred())
+
+			sized := u.get("getCoverArt", url.Values{
+				"id": {p["id"].(string)}, "size": {"100"},
+			})
+			Expect(sized.Status).To(Equal(http.StatusOK))
+			Expect(sized.Header.Get("Cache-Control")).
+				To(Equal("private, max-age=86400"))
+			cfg, err := jpeg.DecodeConfig(bytes.NewReader(sized.Body))
+			Expect(err).NotTo(HaveOccurred())
+			Expect([]int{cfg.Width, cfg.Height}).To(Equal([]int{100, 100}))
 		})
 
 		It("serves the first cover it has when the first album has none", func() {

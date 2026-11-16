@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"github.com/datahearth/streamline/extensions/sdk"
 	"github.com/streamline-hq/streamline-subsonic/envelope"
 	"github.com/streamline-hq/streamline-subsonic/ids"
+	"github.com/streamline-hq/streamline-subsonic/mosaic"
 	"github.com/streamline-hq/streamline-subsonic/transcode"
 )
 
@@ -116,7 +119,9 @@ func mediaLimits(c *reqCtx) (format string, maxKbps int) {
 // mediaStream sends the original file with range support, or a transcode when
 // transcode.Plan asks for one. A transcode cannot seek by range; timeOffset
 // starts it that many seconds in instead (OpenSubsonic transcodeOffset), and
-// only a transcode can, so an offset always takes one.
+// only a transcode can, so an offset takes one unless the client asked for
+// format=raw, which disables transcoding: it then gets the original from its
+// start and seeks by range.
 func mediaStream(c *reqCtx) sdk.Response {
 	if err := c.require(permStream); err != nil {
 		return c.failErr(err)
@@ -133,7 +138,12 @@ func mediaStream(c *reqCtx) sdk.Response {
 		return c.failErr(err)
 	}
 	format, maxKbps := mediaLimits(c)
-	plan, convert := transcode.Plan(mf.suffix(), mf.kbps(), format, maxKbps)
+	if strings.EqualFold(strings.TrimSpace(format), "raw") {
+		return mf.original(false)
+	}
+	plan, convert := transcode.Plan(
+		mf.suffix(), mf.codec(c, format, maxKbps), mf.kbps(), format, maxKbps,
+	)
 	offset := c.intParam("timeOffset", 0, 0, 1<<20)
 	if offset == 0 && !convert {
 		return mf.original(false)
@@ -163,6 +173,21 @@ func mediaStream(c *reqCtx) sdk.Response {
 		ContentType: transcode.Formats[plan.Format].ContentType,
 		Fallback:    fallback,
 	}}
+}
+
+// codec is the file's audio codec when transcode.Plan needs it to tell that
+// the file already is the requested format, "" otherwise or when ffprobe
+// cannot say: the stream is then converted, as for any other file.
+func (f *mediaFile) codec(c *reqCtx, format string, maxKbps int) string {
+	if !transcode.NeedsProbe(f.suffix(), f.kbps(), format, maxKbps) {
+		return ""
+	}
+	res, err := sdk.FFmpeg("ffprobe", transcode.ProbeCodecArgs(f.path)...)
+	if err != nil || res.Error != "" || res.ExitCode != 0 {
+		sdk.Log("warn", "probing a file's codec failed", "track", c.param("id"))
+		return ""
+	}
+	return transcode.ParseCodec(res.Stdout)
 }
 
 // mediaTranscodeAvailable asks the host whether ffmpeg can run now: it is
@@ -241,9 +266,17 @@ func mediaPoster(c *reqCtx, kind, table string, id uint32) sdk.Response {
 		return c.failErr(envelope.NotFound())
 	}
 	rel := path.Join(kind, strconv.FormatUint(uint64(id), 10), "poster.jpg")
-	contentType, ok := posterContentType(path.Join(folder.GuestPath, rel))
+	guest := path.Join(folder.GuestPath, rel)
+	contentType, ok := posterContentType(guest)
 	if !ok {
 		return c.failErr(envelope.NotFound())
+	}
+	if coverSizeParam(c) > 0 {
+		//nolint:gosec // built from a kind and a uint32
+		data, err := os.ReadFile(guest)
+		if err == nil {
+			return coverBytes(c, contentType, data)
+		}
 	}
 	return sdk.Response{
 		Headers: map[string][]string{"Cache-Control": {coverCacheControl}},
@@ -252,6 +285,55 @@ func mediaPoster(c *reqCtx, kind, table string, id uint32) sdk.Response {
 			ContentType: contentType,
 		},
 	}
+}
+
+// coverSizeDir holds, under the cache folder, the covers scaled to a size.
+const coverSizeDir = "cover-sizes"
+
+// coverSizeParam is the side a client asks a cover at, 0 for as stored.
+func coverSizeParam(c *reqCtx) int { return c.intParam("size", 0, 0, 1<<14) }
+
+// coverBytes answers a cover held in memory, scaled down to the size the
+// client asks for. A cover already that small, or one that does not decode,
+// is sent as it is.
+func coverBytes(c *reqCtx, contentType string, data []byte) sdk.Response {
+	if size := coverSizeParam(c); size > 0 {
+		if scaled, ok := coverScaled(c, data, size); ok {
+			return coverResponse("image/jpeg", scaled)
+		}
+	}
+	return coverResponse(contentType, data)
+}
+
+// coverScaled is data scaled so its larger side is size, from the cache
+// folder when it was drawn before. The key names the cover's bytes and the
+// size, so a changed cover draws again. ok is false when nothing was scaled.
+func coverScaled(c *reqCtx, data []byte, size int) (scaled []byte, ok bool) {
+	sum := sha256.Sum256(append(
+		[]byte(strconv.Itoa(size)+"\n"), data...,
+	))
+	cachePath := ""
+	if cache, has := c.req.Folder("cache"); has {
+		cachePath = path.Join(
+			cache.GuestPath, coverSizeDir, hex.EncodeToString(sum[:])+".jpg",
+		)
+		//nolint:gosec // a path under the cache folder, named by a hash
+		if hit, err := os.ReadFile(cachePath); err == nil {
+			return hit, true
+		}
+	}
+	scaled, ok, err := mosaic.Fit(data, size)
+	if err != nil {
+		sdk.Log("warn", "scaling a cover failed", "error", err.Error())
+		return nil, false
+	}
+	if !ok {
+		return nil, false
+	}
+	if cachePath != "" {
+		playlistStoreCover(cachePath, scaled)
+	}
+	return scaled, true
 }
 
 // posterContentType sniffs the cached cover at guestPath. The file is always

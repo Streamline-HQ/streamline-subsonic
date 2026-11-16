@@ -44,11 +44,60 @@ var _ = Describe("Args", Label("unit"), func() {
 	})
 })
 
+var _ = Describe("Plan with the file's codec", Label("unit"), func() {
+	It("sends a file already in the requested codec as it is", func() {
+		for _, c := range [][3]string{
+			{"m4a", "aac", "aac"},
+			{"mp4", "aac", "aac"},
+			{"m4b", "aac", "AAC"},
+			{"ogg", "opus", "opus"},
+			{"oga", "opus", "opus"},
+		} {
+			_, convert := Plan(c[0], c[1], 256, c[2], 0)
+			Expect(convert).To(BeFalse(), "%v", c)
+		}
+	})
+
+	It("converts another codec in the same container", func() {
+		got, convert := Plan("m4a", "alac", 900, "aac", 0)
+		Expect(convert).To(BeTrue())
+		Expect(got).To(Equal(Options{Format: "aac", BitrateKbps: 192}))
+		_, convert = Plan("ogg", "vorbis", 160, "opus", 0)
+		Expect(convert).To(BeTrue())
+		_, convert = Plan("m4a", "", 256, "aac", 0)
+		Expect(convert).To(BeTrue())
+	})
+
+	It("still honours a cap the file exceeds", func() {
+		got, convert := Plan("m4a", "aac", 256, "aac", 128)
+		Expect(convert).To(BeTrue())
+		Expect(got).To(Equal(Options{Format: "aac", BitrateKbps: 128}))
+	})
+
+	It("probes only a container that may hold the codec, under no cap", func() {
+		Expect(NeedsProbe("m4a", 256, "aac", 0)).To(BeTrue())
+		Expect(NeedsProbe("ogg", 160, " Opus ", 320)).To(BeTrue())
+		Expect(NeedsProbe("m4a", 256, "aac", 128)).To(BeFalse())
+		Expect(NeedsProbe("m4a", 0, "aac", 128)).To(BeFalse())
+		Expect(NeedsProbe("flac", 900, "aac", 0)).To(BeFalse())
+		Expect(NeedsProbe("aac", 256, "aac", 0)).To(BeFalse())
+		Expect(NeedsProbe("ogg", 160, "mp3", 0)).To(BeFalse())
+	})
+
+	It("reads the codec ffprobe prints", func() {
+		Expect(ParseCodec([]byte("AAC\n"))).To(Equal("aac"))
+		Expect(ParseCodec([]byte(" opus\nopus\n"))).To(Equal("opus"))
+		Expect(ParseCodec(nil)).To(BeEmpty())
+		Expect(ProbeCodecArgs("/m/a.m4a")).To(HaveLen(9))
+		Expect(ProbeCodecArgs("/m/a.m4a")[8]).To(Equal("/m/a.m4a"))
+	})
+})
+
 var _ = DescribeTable(
 	"Plan",
 	Label("unit"),
 	func(suffix string, srcKbps int, format string, maxKbps int, want *Options) {
-		got, convert := Plan(suffix, uint32(srcKbps), format, maxKbps)
+		got, convert := Plan(suffix, "", uint32(srcKbps), format, maxKbps)
 		if want == nil {
 			Expect(convert).To(BeFalse())
 			return
