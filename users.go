@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/datahearth/streamline/extensions/sdk"
-	"github.com/streamline-hq/streamline-subsonic/envelope"
+	"github.com/streamline-hq/streamline-subsonic-ext/envelope"
 )
 
 // minPasswordLen is the shortest Subsonic password changePassword accepts.

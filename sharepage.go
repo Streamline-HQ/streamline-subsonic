@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/datahearth/streamline/extensions/sdk"
-	"github.com/streamline-hq/streamline-subsonic/transcode"
+	"github.com/streamline-hq/streamline-subsonic-ext/transcode"
 )
 
 func init() { registerShare(serveShare) }

@@ -1,4 +1,4 @@
-module github.com/streamline-hq/streamline-subsonic
+module github.com/streamline-hq/streamline-subsonic-ext
 
 go 1.27.3
 

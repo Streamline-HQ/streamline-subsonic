@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/datahearth/streamline/extensions/sdk"
-	"github.com/streamline-hq/streamline-subsonic/creds"
-	"github.com/streamline-hq/streamline-subsonic/envelope"
+	"github.com/streamline-hq/streamline-subsonic-ext/creds"
+	"github.com/streamline-hq/streamline-subsonic-ext/envelope"
 )
 
 // permission is a Subsonic role an admin switches per account. Each gates

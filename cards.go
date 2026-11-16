@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/datahearth/streamline/extensions/sdk"
-	"github.com/streamline-hq/streamline-subsonic/creds"
+	"github.com/streamline-hq/streamline-subsonic-ext/creds"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/streamline-hq/streamline-subsonic/ids"
+	"github.com/streamline-hq/streamline-subsonic-ext/ids"
 )
 
 // songContentTypes types a song by its suffix, for its listing and for the
